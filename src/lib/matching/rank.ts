@@ -246,8 +246,11 @@ function scoreVersions(
   }
 
   if (wantHard.includes('remix') && gotHard.includes('remix') && wantQualifiers.length > 0) {
-    const overlap = wantQualifiers.some((t) => gotQualifiers.includes(t));
-    if (overlap) add(WEIGHTS.remixerMatch, 'Remixer matches');
+    // A shared first name is not enough to identify a remixer. Generic version
+    // words have already been removed, so require both names to agree in full.
+    const sameRemixer = wantQualifiers.every((t) => gotQualifiers.includes(t)) &&
+      gotQualifiers.every((t) => wantQualifiers.includes(t));
+    if (sameRemixer) add(WEIGHTS.remixerMatch, 'Remixer matches');
     else if (gotQualifiers.length > 0) {
       conflict = true;
       add(WEIGHTS.remixerDifferent, 'Different remix');

@@ -82,6 +82,30 @@ describe('rankCandidates', () => {
     expect(ranked.find((c) => c.recording.id === otherRemix.id)?.confidence).toBe('review');
   });
 
+  it.each([
+    ['David Guetta', 'David Morales'],
+    ['David Guetta', 'Guetta'],
+    ['Guetta', 'David Guetta'],
+  ])('does not confirm different remixers %s and %s', (requested, other) => {
+    const want = { ...request, title: `Blinding Lights (${requested} Remix)` };
+    const wrong = recording({ title: `Blinding Lights (${other} Remix)` });
+    const correct = recording({ title: `Blinding Lights (${requested} Remix)` });
+    const ranked = rankCandidates(want, [wrong, correct]);
+    expect(ranked[0]?.recording.id).toBe(correct.id);
+    expect(ranked[0]?.confidence).toBe('high');
+    expect(ranked[1]?.confidence).toBe('review');
+    expect(ranked[1]?.reasons.map((r) => r.text)).toContain('Different remix');
+    expect(ranked[1]?.reasons.map((r) => r.text)).not.toContain('Remixer matches');
+  });
+
+  it('recognizes a remixer despite normalized spelling and extra version wording', () => {
+    const want = { ...request, title: 'Blinding Lights (David Guetta Remix)' };
+    const candidate = recording({ title: 'Blinding Lights (DAVID GUETTA Extended Remix)' });
+    const result = scoreCandidate(want, candidate);
+    expect(result.confidence).toBe('high');
+    expect(result.reasons.map((r) => r.text)).toContain('Remixer matches');
+  });
+
   it('pushes karaoke and tribute recordings to the bottom', () => {
     const karaoke = recording({ artist: 'Karaoke Hits Band', title: 'Blinding Lights (Originally Performed by The Weeknd)' });
     const tribute = recording({ artist: 'The Weeknd Tribute Band', album: 'A Tribute to The Weeknd' });

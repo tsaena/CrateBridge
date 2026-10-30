@@ -52,7 +52,8 @@ export async function findMatches(
   for (const term of queries) {
     const recordings = await service.search({ term, country: options.country }, options);
     if (recordings.length > 0) {
-      return rankCandidates(track, recordings, options.preference).slice(0, MAX_STORED_CANDIDATES);
+      // Keep the full result set until the reducer applies the latest preference.
+      return rankCandidates(track, recordings, options.preference);
     }
   }
   return [];

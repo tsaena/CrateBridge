@@ -83,6 +83,34 @@ describe('workspaceReducer', () => {
     expect(workspaceReducer(ws, { type: 'restore', entries: [{ track: a!, index: 0 }] }).tracks).toHaveLength(3);
   });
 
+  it('requeues a cancelled lookup when a deleted track is restored', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights']);
+    const id = ws.tracks[0]!.id;
+    ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'cancelled' });
+    const track = ws.tracks[0]!;
+    ws = workspaceReducer(ws, { type: 'delete', ids: [id] });
+    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0 }] });
+    expect(ws.tracks[0]?.match).toMatchObject({ phase: 'queued', candidates: [] });
+    expect(ws.tracks[0]?.match.signature).toBeUndefined();
+    expect(workspaceReducer(ws, {
+      type: 'matchResolved', id, signature: 'cancelled', candidates: [], at: 1,
+    })).toBe(ws);
+    ws = resolve(ws, id, rankCandidates(track, [recording()]));
+    expect(ws.tracks[0]?.match.phase).toBe('done');
+  });
+
+  it('preserves completed results and manual selections when restored', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights']);
+    const id = ws.tracks[0]!.id;
+    const candidate = recording();
+    ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [candidate]));
+    ws = workspaceReducer(ws, { type: 'selectCandidate', id, candidateId: candidate.id });
+    const track = ws.tracks[0]!;
+    ws = workspaceReducer(ws, { type: 'delete', ids: [id] });
+    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0 }] });
+    expect(ws.tracks[0]).toBe(track);
+  });
+
   it('selects the top candidate when results arrive', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
     const id = ws.tracks[0]!.id;
@@ -146,6 +174,22 @@ describe('workspaceReducer', () => {
     const explicit = recording({ explicitness: 'explicit' });
     ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [clean, explicit]));
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'clean' } });
+    expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
+  });
+
+  it('applies the latest explicit preference when in-flight results arrive', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights']);
+    const id = ws.tracks[0]!.id;
+    const explicit = recording({ explicitness: 'explicit' });
+    const clean = recording({ explicitness: 'clean' });
+    const oldCandidates = rankCandidates(ws.tracks[0]!, [explicit, clean], 'any');
+    expect(oldCandidates[0]?.recording.id).toBe(explicit.id);
+    ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'old' });
+    ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'clean' } });
+    expect(ws.tracks[0]?.match.phase).toBe('searching');
+    ws = workspaceReducer(ws, {
+      type: 'matchResolved', id, signature: 'old', candidates: oldCandidates, at: 1,
+    });
     expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
   });
 

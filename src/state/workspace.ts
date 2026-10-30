@@ -9,6 +9,7 @@ import type {
   WorkspaceSettings,
 } from '../types';
 import { rankCandidates } from '../lib/matching/rank';
+import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
 
 export const DEFAULT_SETTINGS: WorkspaceSettings = {
   country: 'US',
@@ -102,7 +103,11 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       [...action.entries]
         .filter((e) => !existing.has(e.track.id))
         .sort((a, b) => a.index - b.index)
-        .forEach(({ track, index }) => tracks.splice(Math.min(index, tracks.length), 0, track));
+        .forEach(({ track, index }) => {
+          // Removing a track cancels its lookup; undo must start a fresh request.
+          const restored = track.match.phase === 'searching' ? requeueTrack(track) : track;
+          tracks.splice(Math.min(index, tracks.length), 0, restored);
+        });
       return { ...state, tracks };
     }
 
@@ -127,7 +132,7 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
         tracks: state.tracks.map((t) => {
           if (ids && !ids.has(t.id)) return t;
           if (action.onlyFailed && t.match.phase !== 'error') return t;
-          return { ...t, match: { ...queuedMatch(), selectedId: t.match.selectedId, userSelected: t.match.userSelected } };
+          return requeueTrack(t);
         }),
       };
     }
@@ -142,15 +147,20 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       return mapTrack(state, action.id, (t) => {
         // Ignore results for a request that has since been edited or re-queued.
         if (t.match.signature !== action.signature || t.match.phase !== 'searching') return t;
+        // Preferences can change while the request is running. Rank the full
+        // result set with current settings before limiting persisted candidates.
+        const candidates = rankCandidates(
+          t, action.candidates.map((c) => c.recording), state.settings.explicitPreference,
+        ).slice(0, MAX_STORED_CANDIDATES);
         const keepSelection =
-          t.match.userSelected && action.candidates.some((c) => c.recording.id === t.match.selectedId);
+          t.match.userSelected && candidates.some((c) => c.recording.id === t.match.selectedId);
         return {
           ...t,
           match: {
             phase: 'done',
             signature: action.signature,
-            candidates: action.candidates,
-            selectedId: keepSelection ? t.match.selectedId : action.candidates[0]?.recording.id,
+            candidates,
+            selectedId: keepSelection ? t.match.selectedId : candidates[0]?.recording.id,
             userSelected: keepSelection ? true : undefined,
             searchedAt: action.at,
           },
@@ -185,6 +195,13 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
     case 'replace':
       return action.workspace;
   }
+}
+
+function requeueTrack(track: Track): Track {
+  return {
+    ...track,
+    match: { ...queuedMatch(), selectedId: track.match.selectedId, userSelected: track.match.userSelected },
+  };
 }
 
 function rerank(track: Track, settings: WorkspaceSettings): Track {
