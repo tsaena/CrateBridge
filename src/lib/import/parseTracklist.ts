@@ -41,7 +41,7 @@ export function parseTracklist(text: string, order: LineOrder = 'artist-title'):
   let skipped = 0;
 
   text.split(/\r\n|\r|\n/).forEach((rawLine, index) => {
-    const raw = rawLine.replace(/ /g, ' ').trim();
+    const raw = rawLine.replace(/\u00a0/g, ' ').trim();
     if (!raw) {
       skipped += 1;
       return;
@@ -76,7 +76,7 @@ export function parseLine(raw: string, lineNumber: number, order: LineOrder = 'a
     text = text.slice(0, duration.index);
   }
   text = stripListMarker(text);
-  text = text.replace(/^["“”']+|["“”']+$/g, '').trim();
+  text = stripWrappingQuotes(text);
 
   for (const separator of SEPARATORS) {
     const match = separator.pattern.exec(text);
@@ -118,6 +118,14 @@ export function parseLine(raw: string, lineNumber: number, order: LineOrder = 'a
     durationMs,
     warning: 'Couldn’t find an artist/title separator. Add the artist or edit the line.',
   };
+}
+
+/** Remove quotes around the whole line, leaving apostrophes like "Beggin'" alone. */
+function stripWrappingQuotes(text: string): string {
+  const match = /^(["“”'‘’])(.*)(["“”'‘’])$/u.exec(text);
+  if (!match?.[2]) return text;
+  const pairs: Record<string, string> = { '"': '"', '“': '”', '”': '”', "'": "'", '‘': '’', '’': '’' };
+  return pairs[match[1]!] === match[3] ? match[2].trim() : text;
 }
 
 function stripListMarker(text: string): string {

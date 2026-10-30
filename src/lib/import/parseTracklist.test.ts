@@ -102,8 +102,11 @@ describe('parseTracklist', () => {
     expect(line.warning).toMatch(/Links can’t be resolved/);
   });
 
-  it('removes wrapping quotes', () => {
+  it('removes wrapping quotes but keeps apostrophes', () => {
     expect(pair('"Outkast - Hey Ya!"')).toEqual(['Outkast', 'Hey Ya!']);
+    expect(pair('“Outkast - Hey Ya!”')).toEqual(['Outkast', 'Hey Ya!']);
+    expect(pair("Måneskin - Beggin'")).toEqual(['Måneskin', "Beggin'"]);
+    expect(pair("'Til Tuesday - Voices Carry")).toEqual(["'Til Tuesday", 'Voices Carry']);
   });
 
   it('parses the bundled sample playlist without problems', () => {

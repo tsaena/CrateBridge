@@ -42,7 +42,7 @@ const ALIASES: Record<CsvField, string[]> = {
 
 export function canonicalHeader(header: string): string {
   return header
-    .replace(/^﻿/, '')
+    .replace(/^\uFEFF/, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -65,7 +65,7 @@ export function detectColumns(headers: string[]): ColumnMapping {
 }
 
 export function readCsv(text: string): CsvTable {
-  const result = Papa.parse<Record<string, string>>(text.replace(/^﻿/, ''), {
+  const result = Papa.parse<Record<string, string>>(text.replace(/^\uFEFF/, ''), {
     header: true,
     skipEmptyLines: true,
     transformHeader: (header) => header.trim(),

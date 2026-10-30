@@ -1,3 +1,6 @@
+import type { Track } from '../../types';
+import { primaryArtist, stripFeatured } from '../normalize';
+
 /**
  * Prefilled searches on external sites. These always work, even when the
  * iTunes Search API is unreachable, but they open search results rather than
@@ -89,3 +92,8 @@ export function buildSearchTerm(artist: string, title: string, modifiers: string
 }
 
 export const SEARCH_MODIFIERS = ['Clean', 'Explicit', 'Extended', 'Radio Edit', 'Remix', 'Original Mix'] as const;
+
+/** External search query for a track: primary artist, title without "feat." credits, plus modifiers. */
+export function searchTermFor(track: Pick<Track, 'artist' | 'title'>, modifiers: string[]): string {
+  return buildSearchTerm(primaryArtist(track.artist), stripFeatured(track.title), modifiers);
+}
