@@ -167,7 +167,8 @@ export function analyzeTitle(title: string): TitleAnalysis {
     displayCore: core,
     tags: [...tags],
     featured,
-    qualifierTokens: tokens(qualifiers.join(' ')).filter((t) => !GENERIC_QUALIFIER_WORDS.has(t)),
+    // Years ("2011 Remaster") describe the release, not which recording it is.
+    qualifierTokens: tokens(qualifiers.join(' ')).filter((t) => !GENERIC_QUALIFIER_WORDS.has(t) && !/^(?:19|20)\d{2}$/.test(t)),
   };
 }
 
