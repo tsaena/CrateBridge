@@ -147,3 +147,14 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Vite / editor
+dist/
+dist-ssr/
+*.local
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+test-results/
+playwright-report/
