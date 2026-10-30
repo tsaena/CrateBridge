@@ -41,19 +41,4 @@ describe('useMatcher recovery', () => {
     }));
   });
 
-  it('uses the current preference before truncating an in-flight result set even with auto-match paused', async () => {
-    const { result, pending, search } = setup();
-    await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
-    act(() => result.current.dispatch({ type: 'updateSettings', changes: { explicitPreference: 'clean', autoMatch: false } }));
-    expect(pending[0]?.signal?.aborted).toBe(false);
-    // The clean recording would fall outside the eight stored results under the old preference.
-    const explicit = Array.from({ length: 8 }, () => recording({ explicitness: 'explicit' }));
-    const clean = recording({ explicitness: 'clean' });
-    await act(async () => pending[0]!.resolve([...explicit, clean]));
-    await waitFor(() => expect(result.current.workspace.tracks[0]?.match).toMatchObject({
-      phase: 'done', selectedId: clean.id,
-    }));
-    expect(result.current.workspace.tracks[0]?.match.candidates).toHaveLength(8);
-    expect(search).toHaveBeenCalledTimes(1);
-  });
 });

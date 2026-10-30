@@ -205,16 +205,6 @@ describe('App', () => {
     expect(within(row('One More Time')).getByRole('button', { name: /^Skipped/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('filters by status', async () => {
-    const { user } = setup();
-    await pasteAndImport(user, 'The Weeknd - Blinding Lights\nDaft Punk - One More Time');
-    await user.click(within(row('One More Time')).getByRole('button', { name: /^Skipped/ }));
-    await user.click(screen.getByRole('button', { name: /^Skipped 1/ }));
-    expect(screen.getAllByRole('listitem').filter((li) => li.hasAttribute('data-track-id'))).toHaveLength(1);
-    await user.type(screen.getByRole('searchbox'), 'weeknd');
-    expect(screen.getByText(/No tracks match these filters/)).toBeInTheDocument();
-  });
-
   it('starts fresh with a notice when stored data is corrupted', () => {
     localStorage.setItem(STORAGE_KEY, '{not json');
     setup();

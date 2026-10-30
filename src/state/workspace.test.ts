@@ -180,10 +180,11 @@ describe('workspaceReducer', () => {
   it('applies the latest explicit preference when in-flight results arrive', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
     const id = ws.tracks[0]!.id;
-    const explicit = recording({ explicitness: 'explicit' });
+    // Under the old preference the clean recording ranks ninth, outside the stored eight.
+    const explicit = Array.from({ length: 8 }, () => recording({ explicitness: 'explicit' }));
     const clean = recording({ explicitness: 'clean' });
-    const oldCandidates = rankCandidates(ws.tracks[0]!, [explicit, clean], 'any');
-    expect(oldCandidates[0]?.recording.id).toBe(explicit.id);
+    const oldCandidates = rankCandidates(ws.tracks[0]!, [...explicit, clean], 'any');
+    expect(oldCandidates.at(-1)?.recording.id).toBe(clean.id);
     ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'old' });
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'clean' } });
     expect(ws.tracks[0]?.match.phase).toBe('searching');
@@ -191,6 +192,7 @@ describe('workspaceReducer', () => {
       type: 'matchResolved', id, signature: 'old', candidates: oldCandidates, at: 1,
     });
     expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
+    expect(ws.tracks[0]?.match.candidates).toHaveLength(8);
   });
 
   it('re-queues every track when the storefront changes', () => {
