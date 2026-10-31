@@ -94,6 +94,7 @@ export const VERSION_LABELS: Record<VersionTag, string> = {
   original: 'Original Mix',
   sped_up: 'Sped Up',
   slowed: 'Slowed',
+  edit: 'Edit',
   alt_version: 'Alternate version',
 };
 
@@ -149,8 +150,10 @@ const STANDARD_RELEASE = /\b(?:album|original|main|mono|stereo|single|lp)\b/;
 /**
  * Version tags for one bracketed or dash qualifier. DJ releases often name the
  * producer instead of saying "remix" ("Jody den Broeder Edit", "Thin White Duke
- * Mix", "Space Cowboy Dub"), so unrecognized mixes, edits, and dubs count as
- * remixes, and other unrecognized "versions" ("Taylor's Version") as alternates.
+ * Mix", "Space Cowboy Dub"), so named mixes, edits, and dubs count as remixes.
+ * Without a name there is no remixer to compare: a bare "Edit" is usually a
+ * shortened original, and a bare "Mix" or "Dub" is some other version, as are
+ * unrecognized "versions" ("Taylor's Version").
  */
 function qualifierTags(qualifier: string): VersionTag[] {
   const tags = detectVersionTags(qualifier);
@@ -158,7 +161,11 @@ function qualifierTags(qualifier: string): VersionTag[] {
   if (tags.length > 0) return tags;
   const lower = normalizeText(qualifier);
   if (STANDARD_RELEASE.test(lower)) return tags;
-  if (/\b(?:mix|edit|dub)\b/.test(lower)) return [...tags, 'remix'];
+  if (/\b(?:mix|edit|dub)\b/.test(lower)) {
+    const named = tokens(lower).some((t) => !/^(?:mix|edit|dub)$/.test(t));
+    if (named) return ['remix'];
+    return /\bedit\b/.test(lower) ? ['edit'] : ['alt_version'];
+  }
   if (/\bversion\b/.test(lower)) return [...tags, 'alt_version'];
   return tags;
 }

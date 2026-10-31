@@ -37,6 +37,7 @@ export type VersionTag =
   | 'original'
   | 'sped_up'
   | 'slowed'
+  | 'edit'
   | 'alt_version';
 
 /**
