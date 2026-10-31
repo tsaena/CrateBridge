@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import { PURCHASE_STATUSES } from '../types';
 import { DEFAULT_SETTINGS, emptyWorkspace } from './workspace';
-import { itunesStoreUrl } from '../lib/providers/itunes';
+import { itunesStoreUrl, safeAppleUrl } from '../lib/providers/itunes';
 
 export const STORAGE_KEY = 'cratebridge:workspace';
 export const BACKUP_KEY = 'cratebridge:workspace:backup';
@@ -227,7 +227,7 @@ function sanitizeCandidate(value: unknown): RankedCandidate | undefined {
     title,
     artist,
     album: str(r.album),
-    artworkUrl: httpsOnly(str(r.artworkUrl)),
+    artworkUrl: safeAppleUrl(httpsOnly(str(r.artworkUrl))),
     durationMs: num(r.durationMs),
     explicitness:
       explicitness === 'explicit' || explicitness === 'clean' || explicitness === 'not_explicit' ? explicitness : 'unknown',

@@ -103,7 +103,7 @@ describe('workspace persistence', () => {
       workspace: {
         settings: { country: 'not-a-country', explicitPreference: 'loud', searchModifiers: ['Extended', 7], autoMatch: 'yes' },
         tracks: [
-          { id: 't1', artist: 'A', title: 'B', status: 'bought', source: 'teleport', match: { phase: 'done', candidates: [{ recording: { id: 'x', title: 'B', artist: 'A', listingUrl: 'javascript:alert(1)', price: '1.29' }, confidence: 'certain', reasons: [{ effect: 'plus', text: 'ok' }, { text: 5 }] }] } },
+          { id: 't1', artist: 'A', title: 'B', status: 'bought', source: 'teleport', match: { phase: 'done', candidates: [{ recording: { id: 'x', title: 'B', artist: 'A', listingUrl: 'javascript:alert(1)', artworkUrl: 'https://tracker.example.com/pixel.gif', price: '1.29' }, confidence: 'certain', reasons: [{ effect: 'plus', text: 'ok' }, { text: 5 }] }] } },
           { id: 't1', artist: 'Dup', title: 'Id' },
           { artist: 'No', title: 'Id' },
           { id: 't3', artist: '', title: '' },
@@ -121,6 +121,7 @@ describe('workspace persistence', () => {
     expect(t1).toMatchObject({ id: 't1', status: 'not_started', source: 'manual' });
     const candidate = t1?.match.candidates[0];
     expect(candidate?.recording.listingUrl).toBeUndefined();
+    expect(candidate?.recording.artworkUrl).toBeUndefined();
     expect(candidate?.recording.price).toBeUndefined();
     expect(candidate?.confidence).toBe('review');
     expect(candidate?.reasons).toEqual([{ effect: 'plus', text: 'ok' }]);
