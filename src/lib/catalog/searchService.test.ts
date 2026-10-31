@@ -61,11 +61,11 @@ describe('CatalogSearchService', () => {
     expect(calls).toBe(3);
   });
 
-  it('pauses the whole queue when rate limited', async () => {
+  it.each(['rate_limited', 'possibly_rate_limited'] as const)('pauses the whole queue when %s', async (kind) => {
     let calls = 0;
     const p = provider(async ({ term }) => {
       calls += 1;
-      if (calls === 1) throw new CatalogError('rate_limited', 'slow down', 403);
+      if (calls === 1) throw new CatalogError(kind, 'slow down', 403);
       return [recording({ title: term })];
     });
     const service = new CatalogSearchService(p, { minIntervalMs: 0, rateLimitBackoffMs: 30_000 });
@@ -73,7 +73,7 @@ describe('CatalogSearchService', () => {
     const second = service.search(q('b'));
     await vi.advanceTimersByTimeAsync(0);
     expect(calls).toBe(1);
-    expect(service.limiter.snapshot().pausedUntil).toBeGreaterThan(Date.now());
+    expect(service.limiter.snapshot()).toMatchObject({ pauseReason: kind, pausedUntil: Date.now() + 30_000 });
     await vi.advanceTimersByTimeAsync(29_000);
     expect(calls).toBe(1);
     await vi.advanceTimersByTimeAsync(1_000);

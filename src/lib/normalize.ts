@@ -94,6 +94,8 @@ export const VERSION_LABELS: Record<VersionTag, string> = {
   original: 'Original Mix',
   sped_up: 'Sped Up',
   slowed: 'Slowed',
+  edit: 'Edit',
+  alt_version: 'Alternate version',
 };
 
 /** Tags that do not change the underlying recording enough to count as a different version. */
@@ -142,6 +144,32 @@ export function detectVersionTags(text: string): VersionTag[] {
   return [...found];
 }
 
+// Qualifiers that describe the standard release rather than a different recording.
+const STANDARD_RELEASE = /\b(?:album|original|main|mono|stereo|single|lp)\b/;
+
+/**
+ * Version tags for one bracketed or dash qualifier. DJ releases often name the
+ * producer instead of saying "remix" ("Jody den Broeder Edit", "Thin White Duke
+ * Mix", "Space Cowboy Dub"), so named mixes, edits, and dubs count as remixes.
+ * Without a name there is no remixer to compare: a bare "Edit" is usually a
+ * shortened original, and a bare "Mix" or "Dub" is some other version, as are
+ * unrecognized "versions" ("Taylor's Version").
+ */
+function qualifierTags(qualifier: string): VersionTag[] {
+  const tags = detectVersionTags(qualifier);
+  // Anything the named rules recognize ("Clean Edit", "Remastered Version") is already classified.
+  if (tags.length > 0) return tags;
+  const lower = normalizeText(qualifier);
+  if (STANDARD_RELEASE.test(lower)) return tags;
+  if (/\b(?:mix|edit|dub)\b/.test(lower)) {
+    const named = tokens(lower).some((t) => !/^(?:mix|edit|dub)$/.test(t));
+    if (named) return ['remix'];
+    return /\bedit\b/.test(lower) ? ['edit'] : ['alt_version'];
+  }
+  if (/\bversion\b/.test(lower)) return [...tags, 'alt_version'];
+  return tags;
+}
+
 export interface TitleAnalysis {
   /** Normalized core title without featured artists or version qualifiers. */
   core: string;
@@ -157,7 +185,7 @@ export function analyzeTitle(title: string): TitleAnalysis {
   const featured = featuredInTitle(title);
   const withoutFeat = stripFeatured(title);
   const { core, qualifiers } = splitTitle(withoutFeat);
-  const tags = new Set<VersionTag>(detectVersionTags(qualifiers.join(' ')));
+  const tags = new Set<VersionTag>(qualifiers.flatMap(qualifierTags));
   // Some tags appear in the core title itself without brackets ("Yeah! Live").
   for (const tag of detectVersionTags(core)) {
     if (tag === 'remix' || tag === 'karaoke' || tag === 'instrumental') tags.add(tag);

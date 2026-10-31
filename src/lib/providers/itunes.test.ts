@@ -35,6 +35,8 @@ describe('parseItunesResponse', () => {
       genre: 'R&B/Soul',
     });
     expect(recording?.listingUrl).toMatch(/^https:\/\/music\.apple\.com\//);
+    // Opens the purchasable iTunes Store page rather than Apple Music.
+    expect(new URL(recording!.listingUrl!).searchParams.get('app')).toBe('itunes');
   });
 
   it('maps clean and unknown explicitness', () => {
@@ -80,7 +82,7 @@ describe('parseItunesResponse', () => {
     expect(missing?.listingUrl).toBeUndefined();
     expect(foreign?.listingUrl).toBeUndefined();
     expect(script?.listingUrl).toBeUndefined();
-    expect(http?.listingUrl).toBe('https://itunes.apple.com/us/album/x?i=1');
+    expect(http?.listingUrl).toBe('https://itunes.apple.com/us/album/x?i=1&app=itunes');
     expect(http?.artworkUrl).toBe('https://a1.mzstatic.com/x.jpg');
     expect(safeAppleUrl('https://notapple.com.evil.io/x')).toBeUndefined();
   });
@@ -131,12 +133,12 @@ describe('createItunesProvider', () => {
     expect(jsonp).toHaveBeenCalledTimes(2);
   });
 
-  it('reports a network error when both transports fail', async () => {
+  it('treats a failed JSONP request as possible rate limiting, since its status is hidden', async () => {
     const provider = createItunesProvider({
       fetchImpl: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
       jsonp: vi.fn().mockRejectedValue(new Error('script error')),
     });
-    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'network' });
+    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'possibly_rate_limited', retryable: true });
   });
 
   it('reports cancellation without falling back', async () => {

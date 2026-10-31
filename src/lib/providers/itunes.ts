@@ -119,7 +119,9 @@ async function viaJsonp(jsonp: JsonpLoader, url: string, timeoutMs: number): Pro
   try {
     return await jsonp(url, timeoutMs);
   } catch {
-    throw new CatalogError('network', 'Couldn’t reach Apple’s catalog.');
+    // A failed script load hides the HTTP status. A 403 rate limit looks exactly
+    // like this, so the caller backs off as if limited.
+    throw new CatalogError('possibly_rate_limited', 'Apple’s catalog didn’t respond. It may be limiting requests.');
   }
 }
 
@@ -153,7 +155,7 @@ function toRecording(item: ItunesResult): CatalogRecording | undefined {
     // Apple reports album-only or unavailable tracks with a missing or non-positive price.
     price: typeof item.trackPrice === 'number' && item.trackPrice > 0 ? item.trackPrice : undefined,
     currency: item.currency || undefined,
-    listingUrl: safeAppleUrl(item.trackViewUrl),
+    listingUrl: itunesStoreUrl(item.trackViewUrl),
     releaseDate: item.releaseDate || undefined,
     genre: item.primaryGenreName || undefined,
   };
@@ -184,6 +186,19 @@ export function safeAppleUrl(value: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A safe listing URL that opens in the iTunes Store. Apple's `trackViewUrl`
+ * now points at Apple Music; its `app=itunes` link parameter makes Apple's
+ * apps show the purchasable iTunes Store page instead.
+ */
+export function itunesStoreUrl(value: string | undefined): string | undefined {
+  const safe = safeAppleUrl(value);
+  if (!safe) return undefined;
+  const url = new URL(safe);
+  if (/(^|\.)apple\.com$/.test(url.hostname)) url.searchParams.set('app', 'itunes');
+  return url.toString();
 }
 
 let jsonpCounter = 0;

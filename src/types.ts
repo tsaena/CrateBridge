@@ -36,7 +36,9 @@ export type VersionTag =
   | 'explicit'
   | 'original'
   | 'sped_up'
-  | 'slowed';
+  | 'slowed'
+  | 'edit'
+  | 'alt_version';
 
 /**
  * A recording from a retailer catalog, trimmed to the fields CrateBridge

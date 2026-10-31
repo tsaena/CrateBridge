@@ -1,6 +1,6 @@
 import type { CatalogRecording } from '../../types';
 import { CatalogError, type CatalogProvider, type CatalogQuery } from '../providers/types';
-import { RateLimiter } from './rateLimiter';
+import { RateLimiter, type PauseReason } from './rateLimiter';
 
 export interface SearchServiceOptions {
   /** Spacing between requests. Apple documents roughly 20 calls per minute. */
@@ -14,7 +14,9 @@ export interface SearchServiceOptions {
   now?: () => number;
 }
 
-export const DEFAULT_MIN_INTERVAL_MS = 3_100;
+// Apple documents roughly 20 calls per minute; 15 leaves headroom for other
+// clients on the same network, such as a phone on the same Wi-Fi.
+export const DEFAULT_MIN_INTERVAL_MS = 4_000;
 
 /**
  * Wraps a catalog provider with pacing, retries, an in-memory cache, and
@@ -79,12 +81,10 @@ export class CatalogSearchService {
       const catalogError =
         error instanceof CatalogError ? error : new CatalogError('network', 'Couldn’t reach the catalog.');
       if (!catalogError.retryable || attempt >= this.maxRetries || options.signal?.aborted) throw catalogError;
-      const wait =
-        catalogError.kind === 'rate_limited'
-          ? this.rateLimitBackoffMs * 2 ** attempt
-          : this.retryBackoffMs * 2 ** attempt;
+      const limited = catalogError.kind === 'rate_limited' || catalogError.kind === 'possibly_rate_limited';
+      const wait = (limited ? this.rateLimitBackoffMs : this.retryBackoffMs) * 2 ** attempt;
       // Rate limiting affects every request, so pause the whole queue rather than just this one.
-      this.limiter.pauseUntil(this.now() + wait);
+      this.limiter.pauseUntil(this.now() + wait, limited ? catalogError.kind as PauseReason : 'retry');
       return this.attempt(query, { ...options, priority: true }, attempt + 1);
     }
   }

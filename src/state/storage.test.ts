@@ -127,6 +127,19 @@ describe('workspace persistence', () => {
     expect(t4?.match).toEqual({ phase: 'queued', candidates: [] });
   });
 
+  it('adds the iTunes Store parameter to listing links saved by earlier versions', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      workspace: {
+        tracks: [{ id: 't1', artist: 'A', title: 'B', match: { phase: 'done', candidates: [
+          { recording: { id: 'itunes:1', title: 'B', artist: 'A', listingUrl: 'https://music.apple.com/us/album/b/1?i=2&uo=4' }, confidence: 'high', reasons: [] },
+        ] } }],
+      },
+    });
+    const url = loadWorkspace(memoryStorage({ [STORAGE_KEY]: raw })).workspace.tracks[0]?.match.candidates[0]?.recording.listingUrl;
+    expect(url).toBe('https://music.apple.com/us/album/b/1?i=2&uo=4&app=itunes');
+  });
+
   it('reports save failures such as a full quota', () => {
     const storage: StorageLike = {
       getItem: () => null,

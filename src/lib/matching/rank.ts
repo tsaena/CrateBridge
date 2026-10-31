@@ -63,7 +63,7 @@ export const WEIGHTS = {
 /** Versions that replace the performance entirely (not the artist's recording). */
 const SUBSTITUTE_TAGS: ReadonlySet<VersionTag> = new Set(['karaoke', 'cover', 'instrumental']);
 /** Edits of the same performance; a smaller penalty when unrequested. */
-const EDIT_TAGS: ReadonlySet<VersionTag> = new Set(['extended', 'radio_edit']);
+const EDIT_TAGS: ReadonlySet<VersionTag> = new Set(['extended', 'radio_edit', 'edit']);
 
 const LIVE_ALBUM = /\blive (?:at|in|from|on)\b|\blive$|^live\b|\bunplugged\b|\bin concert\b/;
 const SUBSTITUTE_CONTEXT = /\bkaraoke\b|\btribute\b|\bin the style of\b|\bmade famous by\b|\boriginally performed\b|\bcover (?:version|band)s?\b|\bsound ?alike\b/;

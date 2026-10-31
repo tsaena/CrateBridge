@@ -86,9 +86,9 @@ export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgai
         <p className="mt-3 flex gap-2 text-xs leading-5 text-ink-400">
           <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            <strong className="font-medium text-ink-300">iTunes listing</strong> links go to Apple’s page for that exact recording.
-            Purchases complete in the iTunes Store — the Music app on Mac (with the iTunes Store shown in settings), the iTunes
-            Store app on iPhone, or iTunes for Windows. On the web, Apple’s page may show Apple Music streaming instead of a price.
+            <strong className="font-medium text-ink-300">iTunes listing</strong> links open the iTunes Store page for that exact
+            recording, where you complete the purchase. On a Mac they open the Music app; turn on iTunes Store in Music → Settings →
+            General if it’s hidden. Without Apple’s apps, the link falls back to Apple Music on the web, which doesn’t sell tracks.
           </span>
         </p>
       </section>

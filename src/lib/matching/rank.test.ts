@@ -20,6 +20,18 @@ describe('normalization', () => {
     expect(analyzeTitle('Dreams - 2004 Remaster').tags).toEqual(['remaster']);
     expect(analyzeTitle('Hey Ya! [Live]').tags).toEqual(['live']);
     expect(analyzeTitle('Live Forever').tags).toEqual([]);
+    // Producer-named DJ versions are remixes even without the word "remix".
+    expect(analyzeTitle('Poker Face (Jody Den Broeder Edit)').tags).toEqual(['remix']);
+    expect(analyzeTitle("Mr. Brightside (Jacques Lu Cont's Thin White Duke Mix)").tags).toEqual(['remix']);
+    expect(analyzeTitle('Poker Face (Space Cowboy Dub)').tags).toEqual(['remix']);
+    expect(analyzeTitle("Shake It Off (Taylor's Version)").tags).toEqual(['alt_version']);
+    // Without a producer name there is no remixer to compare, so these aren't remixes.
+    expect(analyzeTitle('Blinding Lights (Edit)').tags).toEqual(['edit']);
+    expect(analyzeTitle('Blinding Lights (Dub)').tags).toEqual(['alt_version']);
+    // Standard-release wording is not a different recording.
+    expect(analyzeTitle('Yeah! (Album Version)').tags).toEqual([]);
+    expect(analyzeTitle('Yeah! (Clean Edit)').tags).toEqual(['clean']);
+    expect(analyzeTitle('Dreams (Remastered Version)').tags).toEqual(['remaster']);
     expect(analyzeTitle('I Wanna Dance with Somebody (Who Loves Me)')).toMatchObject({
       core: 'i wanna dance with somebody',
       featured: [],
@@ -61,6 +73,24 @@ describe('rankCandidates', () => {
     expect(ranked[0]?.recording.id).toBe(studio.id);
     expect(ranked.find((c) => c.recording.id === live.id)?.confidence).toBe('review');
     expect(ranked.find((c) => c.recording.id === remix.id)?.confidence).toBe('review');
+  });
+
+  it('does not treat a producer-named edit as the requested original', () => {
+    const edit = recording({ artist: 'Lady Gaga', title: 'Poker Face (Jody Den Broeder Edit)' });
+    const original = recording({ artist: 'Lady Gaga', title: 'Poker Face' });
+    const ranked = rankCandidates({ artist: 'Lady Gaga', title: 'Poker Face' }, [edit, original]);
+    expect(ranked[0]?.recording.id).toBe(original.id);
+    expect(ranked[1]?.confidence).toBe('review');
+  });
+
+  it('does not confidently match a bare edit request to a named remix', () => {
+    const want = { ...request, title: 'Blinding Lights (Edit)' };
+    const remix = recording({ title: 'Blinding Lights (David Guetta Remix)' });
+    const edit = recording({ title: 'Blinding Lights (Edit)' });
+    expect(scoreCandidate(want, remix).confidence).toBe('review');
+    expect(rankCandidates(want, [remix, edit])[0]?.recording.id).toBe(edit.id);
+    // An unrequested bare edit is a small step from the original, not a remix.
+    expect(rankCandidates(request, [edit, recording()])[0]?.recording.title).toBe('Blinding Lights');
   });
 
   it('detects live recordings from album metadata', () => {
