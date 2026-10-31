@@ -12,6 +12,7 @@ import type {
 } from '../types';
 import { PURCHASE_STATUSES } from '../types';
 import { DEFAULT_SETTINGS, emptyWorkspace } from './workspace';
+import { itunesStoreUrl } from '../lib/providers/itunes';
 
 export const STORAGE_KEY = 'cratebridge:workspace';
 export const BACKUP_KEY = 'cratebridge:workspace:backup';
@@ -232,7 +233,8 @@ function sanitizeCandidate(value: unknown): RankedCandidate | undefined {
       explicitness === 'explicit' || explicitness === 'clean' || explicitness === 'not_explicit' ? explicitness : 'unknown',
     price: num(r.price),
     currency: str(r.currency),
-    listingUrl: httpsOnly(str(r.listingUrl)),
+    // Also upgrades links saved before they carried the iTunes Store parameter.
+    listingUrl: itunesStoreUrl(httpsOnly(str(r.listingUrl))),
     releaseDate: str(r.releaseDate),
     genre: str(r.genre),
     isrc: str(r.isrc),
