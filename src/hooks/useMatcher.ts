@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from 'react';
 import type { Workspace } from '../types';
 import type { CatalogSearchService } from '../lib/catalog/searchService';
-import type { RateLimiterSnapshot } from '../lib/catalog/rateLimiter';
+import type { PauseReason, RateLimiterSnapshot } from '../lib/catalog/rateLimiter';
 import { findMatches, matchSignature } from '../lib/matching/matchTrack';
 import { CatalogError } from '../lib/providers/types';
 import type { WorkspaceAction } from '../state/workspace';
@@ -18,6 +18,7 @@ export interface MatcherStatus {
   running: boolean;
   /** Epoch ms until which Apple has asked us to back off. */
   pausedUntil: number;
+  pauseReason?: PauseReason;
 }
 
 /**
@@ -100,6 +101,7 @@ export function useMatcher(workspace: Workspace, dispatch: Dispatch<WorkspaceAct
     outstanding,
     running: tracks.some((t) => t.match.phase === 'searching'),
     pausedUntil: limiter.pausedUntil,
+    pauseReason: limiter.pauseReason,
   };
   return { status, prioritize };
 }

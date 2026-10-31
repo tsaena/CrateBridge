@@ -18,7 +18,7 @@ export interface CatalogProvider {
   search(query: CatalogQuery, signal?: AbortSignal): Promise<CatalogRecording[]>;
 }
 
-export type CatalogErrorKind = 'rate_limited' | 'network' | 'server' | 'bad_response' | 'aborted';
+export type CatalogErrorKind = 'rate_limited' | 'possibly_rate_limited' | 'network' | 'server' | 'bad_response' | 'aborted';
 
 export class CatalogError extends Error {
   readonly kind: CatalogErrorKind;
@@ -32,6 +32,6 @@ export class CatalogError extends Error {
   }
 
   get retryable(): boolean {
-    return this.kind === 'rate_limited' || this.kind === 'network' || this.kind === 'server';
+    return this.kind !== 'bad_response' && this.kind !== 'aborted';
   }
 }

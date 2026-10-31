@@ -119,7 +119,9 @@ async function viaJsonp(jsonp: JsonpLoader, url: string, timeoutMs: number): Pro
   try {
     return await jsonp(url, timeoutMs);
   } catch {
-    throw new CatalogError('network', 'Couldn’t reach Apple’s catalog.');
+    // A failed script load hides the HTTP status. When Apple rate-limits it answers
+    // 403, which looks exactly like this, so the caller backs off as if limited.
+    throw new CatalogError('possibly_rate_limited', 'Apple’s catalog didn’t respond. It may be limiting requests.');
   }
 }
 

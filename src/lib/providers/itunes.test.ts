@@ -131,12 +131,12 @@ describe('createItunesProvider', () => {
     expect(jsonp).toHaveBeenCalledTimes(2);
   });
 
-  it('reports a network error when both transports fail', async () => {
+  it('treats a failed JSONP request as possible rate limiting, since its status is hidden', async () => {
     const provider = createItunesProvider({
       fetchImpl: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
       jsonp: vi.fn().mockRejectedValue(new Error('script error')),
     });
-    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'network' });
+    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'possibly_rate_limited', retryable: true });
   });
 
   it('reports cancellation without falling back', async () => {

@@ -78,7 +78,14 @@ export function SummaryBar({ summary, matcher, autoMatch, onToggleAutoMatch, now
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-ink-700/70 bg-ink-900/60 px-3 py-2 text-xs text-ink-300" aria-live="polite">
           <span>
             {backoffSeconds > 0 ? (
-              <span className="text-review-300">Apple asked us to slow down — resuming lookups in {backoffSeconds}s.</span>
+              <span className="text-review-300">
+                {matcher.pauseReason === 'rate_limited'
+                  ? 'Apple asked us to slow down'
+                  : matcher.pauseReason === 'possibly_rate_limited'
+                    ? 'Apple didn’t answer the last lookup, which usually means it’s limiting requests'
+                    : 'A lookup failed'}
+                {' '}— resuming lookups in {backoffSeconds}s.
+              </span>
             ) : matcher.outstanding > 0 && autoMatch ? (
               <>
                 Matching {matcher.outstanding} {matcher.outstanding === 1 ? 'track' : 'tracks'} against the iTunes catalog · about{' '}

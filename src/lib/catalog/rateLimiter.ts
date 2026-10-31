@@ -6,11 +6,15 @@ export interface RateLimiterOptions {
   now?: () => number;
 }
 
+/** Why the queue is paused: a confirmed rate limit, a likely one, or an ordinary retry. */
+export type PauseReason = 'rate_limited' | 'possibly_rate_limited' | 'retry';
+
 export interface RateLimiterSnapshot {
   waiting: number;
   active: boolean;
   /** Epoch ms until which requests are held back after a rate-limit response. */
   pausedUntil: number;
+  pauseReason?: PauseReason;
 }
 
 interface Job {
@@ -32,6 +36,7 @@ export class RateLimiter {
   private minIntervalMs: number;
   private lastStart = Number.NEGATIVE_INFINITY;
   private pausedUntil = 0;
+  private pauseReason: PauseReason | undefined;
   private active = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -64,7 +69,8 @@ export class RateLimiter {
   }
 
   /** Hold all requests until `until` (epoch ms), e.g. after Apple signals rate limiting. */
-  pauseUntil(until: number): void {
+  pauseUntil(until: number, reason: PauseReason = 'retry'): void {
+    if (until >= this.pausedUntil) this.pauseReason = reason;
     this.pausedUntil = Math.max(this.pausedUntil, until);
     this.emit();
     this.pump();
@@ -75,7 +81,7 @@ export class RateLimiter {
   }
 
   snapshot(): RateLimiterSnapshot {
-    return { waiting: this.queue.length, active: this.active, pausedUntil: this.pausedUntil };
+    return { waiting: this.queue.length, active: this.active, pausedUntil: this.pausedUntil, pauseReason: this.pauseReason };
   }
 
   subscribe(listener: (snapshot: RateLimiterSnapshot) => void): () => void {
