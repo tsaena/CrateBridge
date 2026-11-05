@@ -286,7 +286,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
     showToast({
       text: `Deleted “${deleted.name}”`,
       actionLabel: 'Undo',
-      onAction: () => dispatch({ type: 'restorePlaylist', playlist: deleted, index, active: wasActive }),
+      onAction: () => dispatch({ type: 'restorePlaylist', playlist: deleted, index, active: wasActive, country: current.settings.country }),
     });
   };
 

@@ -47,7 +47,7 @@ export type WorkspaceAction =
   | { type: 'renamePlaylist'; id: string; name: string }
   | { type: 'switchPlaylist'; id: string }
   | { type: 'deletePlaylist'; id: string }
-  | { type: 'restorePlaylist'; playlist: Playlist; index: number; active: boolean }
+  | { type: 'restorePlaylist'; playlist: Playlist; index: number; active: boolean; country: string }
   | { type: 'import'; drafts: TrackDraft[]; source: TrackSource }
   | { type: 'update'; id: string; changes: Partial<Pick<Track, 'artist' | 'title' | 'album' | 'searchOverride'>> }
   | { type: 'delete'; ids: string[] }
@@ -124,7 +124,15 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
     case 'restorePlaylist': {
       if (state.playlists.some((p) => p.id === action.playlist.id)) return state;
       // Deleting a playlist cancels its lookups, so undo starts them again.
-      const playlist = { ...action.playlist, tracks: action.playlist.tracks.map(requeueIfSearching) };
+      // Shared settings may have changed while this snapshot was outside state.
+      const playlist = {
+        ...action.playlist,
+        tracks: action.playlist.tracks.map((track) =>
+          action.country !== state.settings.country
+            ? { ...track, match: queuedMatch() }
+            : rerank(requeueIfSearching(track), state.settings),
+        ),
+      };
       const playlists = [...state.playlists];
       playlists.splice(Math.min(action.index, playlists.length), 0, playlist);
       return { ...state, playlists, activePlaylistId: action.active ? playlist.id : state.activePlaylistId };

@@ -214,6 +214,47 @@ describe('workspaceReducer', () => {
 });
 
 describe('playlists', () => {
+  it('re-queues restored listings after a storefront change and ignores cancelled results', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights'], ['A', 'Searching']);
+    const [done, searching] = activePlaylist(ws).tracks;
+    ws = resolve(ws, done!.id, rankCandidates(done!, [recording()]));
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: [done!.id], status: 'purchased' });
+    ws = workspaceReducer(ws, { type: 'matchStarted', id: searching!.id, signature: 'cancelled' });
+    const deleted = activePlaylist(ws);
+    ws = run([
+      { type: 'deletePlaylist', id: deleted.id },
+      { type: 'updateSettings', changes: { country: 'GB' } },
+      { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: 'US' },
+    ], ws);
+    expect(activePlaylist(ws).tracks.map((t) => t.match)).toEqual([
+      { phase: 'queued', candidates: [] },
+      { phase: 'queued', candidates: [] },
+    ]);
+    expect(activePlaylist(ws).tracks[0]?.status).toBe('purchased');
+    expect(workspaceReducer(ws, {
+      type: 'matchResolved', id: searching!.id, signature: 'cancelled', candidates: [], at: 1,
+    })).toBe(ws);
+  });
+
+  it('re-ranks restored playlists with the current preference while keeping manual picks', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights'], ['The Weeknd', 'Blinding Lights']);
+    const clean = recording({ explicitness: 'clean' });
+    const explicit = recording({ explicitness: 'explicit' });
+    for (const track of activePlaylist(ws).tracks) {
+      ws = resolve(ws, track.id, rankCandidates(track, [clean, explicit]));
+    }
+    const manualId = activePlaylist(ws).tracks[1]!.id;
+    ws = workspaceReducer(ws, { type: 'selectCandidate', id: manualId, candidateId: explicit.id });
+    const deleted = activePlaylist(ws);
+    ws = run([
+      { type: 'deletePlaylist', id: deleted.id },
+      { type: 'updateSettings', changes: { explicitPreference: 'clean' } },
+      { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: 'US' },
+    ], ws);
+    expect(activePlaylist(ws).tracks.map((t) => t.match.selectedId)).toEqual([clean.id, explicit.id]);
+    expect(activePlaylist(ws).tracks[1]?.match.userSelected).toBe(true);
+  });
+
   it('creates, renames, switches, deletes, and restores playlists', () => {
     let ws = withTracks(['A', 'First']);
     const first = ws.activePlaylistId;
@@ -238,7 +279,7 @@ describe('playlists', () => {
     ws = workspaceReducer(ws, { type: 'deletePlaylist', id: first });
     expect(ws.playlists.map((p) => p.name)).toEqual(['Friday set']);
     expect(ws.activePlaylistId).toBe(second.id);
-    ws = workspaceReducer(ws, { type: 'restorePlaylist', playlist: deleted, index: 0, active: true });
+    ws = workspaceReducer(ws, { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: ws.settings.country });
     expect(ws.playlists.map((p) => p.name)).toEqual(['My playlist', 'Friday set']);
     expect(ws.activePlaylistId).toBe(first);
 
