@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch } from 'react';
 import type { Workspace } from '../types';
 import type { CatalogSearchService } from '../lib/catalog/searchService';
 import type { PauseReason, RateLimiterSnapshot } from '../lib/catalog/rateLimiter';
 import { findMatches, matchSignature } from '../lib/matching/matchTrack';
 import { CatalogError } from '../lib/providers/types';
-import type { WorkspaceAction } from '../state/workspace';
+import { allTracks, type WorkspaceAction } from '../state/workspace';
 
 interface Running {
   id: string;
@@ -22,8 +22,8 @@ export interface MatcherStatus {
 }
 
 /**
- * Works through queued tracks one at a time. Tracks the user asks about are
- * moved to the front; everything else follows import order.
+ * Works through queued tracks one at a time, across every playlist. Tracks the
+ * user asks about go first, then the active playlist, then the others.
  */
 export function useMatcher(workspace: Workspace, dispatch: Dispatch<WorkspaceAction>, service: CatalogSearchService) {
   const running = useRef<Running | null>(null);
@@ -33,7 +33,8 @@ export function useMatcher(workspace: Workspace, dispatch: Dispatch<WorkspaceAct
 
   useEffect(() => service.limiter.subscribe(setLimiter), [service]);
 
-  const { tracks, settings } = workspace;
+  const { playlists, activePlaylistId, settings } = workspace;
+  const tracks = useMemo(() => allTracks({ playlists, activePlaylistId }), [playlists, activePlaylistId]);
 
   useEffect(() => {
     const current = running.current;

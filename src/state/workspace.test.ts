@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RankedCandidate, Workspace } from '../types';
-import { emptyWorkspace, selectedCandidate, workspaceReducer, type WorkspaceAction } from './workspace';
+import { activePlaylist, allTracks, emptyWorkspace, selectedCandidate, workspaceReducer, type WorkspaceAction } from './workspace';
 import { rankCandidates } from '../lib/matching/rank';
 import { findDuplicates, findAlternateVersions } from '../lib/duplicates';
 import { recording } from '../test/fixtures';
 
+const pid = (ws: Workspace) => ws.activePlaylistId;
 const run = (actions: WorkspaceAction[], start: Workspace = emptyWorkspace()) => actions.reduce(workspaceReducer, start);
 
 function withTracks(...pairs: [string, string][]): Workspace {
@@ -30,99 +31,99 @@ describe('workspaceReducer', () => {
         drafts: [{ artist: ' The Weeknd ', title: 'Blinding Lights ' }, { artist: '', title: '  ' }],
       },
     ]);
-    expect(ws.tracks).toHaveLength(1);
-    expect(ws.tracks[0]).toMatchObject({ artist: 'The Weeknd', title: 'Blinding Lights', status: 'not_started', source: 'paste' });
-    expect(ws.tracks[0]?.match.phase).toBe('queued');
+    expect(activePlaylist(ws).tracks).toHaveLength(1);
+    expect(activePlaylist(ws).tracks[0]).toMatchObject({ artist: 'The Weeknd', title: 'Blinding Lights', status: 'not_started', source: 'paste' });
+    expect(activePlaylist(ws).tracks[0]?.match.phase).toBe('queued');
   });
 
   it('moves between every status and back', () => {
     let ws = withTracks(['A', 'B']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     for (const status of ['found', 'purchased', 'skipped', 'not_started'] as const) {
       ws = workspaceReducer(ws, { type: 'setStatus', ids: [id], status });
-      expect(ws.tracks[0]?.status).toBe(status);
+      expect(activePlaylist(ws).tracks[0]?.status).toBe(status);
     }
   });
 
   it('resets every status at once', () => {
     let ws = withTracks(['A', 'B'], ['C', 'D']);
-    ws = workspaceReducer(ws, { type: 'setStatus', ids: ws.tracks.map((t) => t.id), status: 'purchased' });
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: activePlaylist(ws).tracks.map((t) => t.id), status: 'purchased' });
     ws = workspaceReducer(ws, { type: 'resetAllStatuses' });
-    expect(ws.tracks.map((t) => t.status)).toEqual(['not_started', 'not_started']);
+    expect(activePlaylist(ws).tracks.map((t) => t.status)).toEqual(['not_started', 'not_started']);
   });
 
   it('re-queues a track when its artist or title is edited, but not for no-op edits', () => {
     let ws = withTracks(['The Weekend', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
-    ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [recording()]));
-    expect(ws.tracks[0]?.match.phase).toBe('done');
+    const id = activePlaylist(ws).tracks[0]!.id;
+    ws = resolve(ws, id, rankCandidates(activePlaylist(ws).tracks[0]!, [recording()]));
+    expect(activePlaylist(ws).tracks[0]?.match.phase).toBe('done');
 
     const same = workspaceReducer(ws, { type: 'update', id, changes: { artist: 'The Weekend ' } });
     expect(same).toBe(ws);
 
     ws = workspaceReducer(ws, { type: 'update', id, changes: { artist: 'The Weeknd' } });
-    expect(ws.tracks[0]).toMatchObject({ artist: 'The Weeknd', match: { phase: 'queued', candidates: [] } });
+    expect(activePlaylist(ws).tracks[0]).toMatchObject({ artist: 'The Weeknd', match: { phase: 'queued', candidates: [] } });
   });
 
   it('keeps the status when a track is edited', () => {
     let ws = withTracks(['A', 'B']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     ws = workspaceReducer(ws, { type: 'setStatus', ids: [id], status: 'found' });
     ws = workspaceReducer(ws, { type: 'update', id, changes: { title: 'C' } });
-    expect(ws.tracks[0]?.status).toBe('found');
+    expect(activePlaylist(ws).tracks[0]?.status).toBe('found');
   });
 
   it('deletes tracks and restores them at their original positions', () => {
     let ws = withTracks(['A', '1'], ['B', '2'], ['C', '3']);
-    const [a, b, c] = ws.tracks;
+    const [a, b, c] = activePlaylist(ws).tracks;
     ws = workspaceReducer(ws, { type: 'delete', ids: [a!.id, c!.id] });
-    expect(ws.tracks.map((t) => t.artist)).toEqual(['B']);
-    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track: c!, index: 2 }, { track: a!, index: 0 }] });
-    expect(ws.tracks.map((t) => t.id)).toEqual([a!.id, b!.id, c!.id]);
+    expect(activePlaylist(ws).tracks.map((t) => t.artist)).toEqual(['B']);
+    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track: c!, index: 2, playlistId: pid(ws) }, { track: a!, index: 0, playlistId: pid(ws) }] });
+    expect(activePlaylist(ws).tracks.map((t) => t.id)).toEqual([a!.id, b!.id, c!.id]);
     // Restoring twice does not duplicate.
-    expect(workspaceReducer(ws, { type: 'restore', entries: [{ track: a!, index: 0 }] }).tracks).toHaveLength(3);
+    expect(activePlaylist(workspaceReducer(ws, { type: 'restore', entries: [{ track: a!, index: 0, playlistId: pid(ws) }] })).tracks).toHaveLength(3);
   });
 
   it('requeues a cancelled lookup when a deleted track is restored', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'cancelled' });
-    const track = ws.tracks[0]!;
+    const track = activePlaylist(ws).tracks[0]!;
     ws = workspaceReducer(ws, { type: 'delete', ids: [id] });
-    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0 }] });
-    expect(ws.tracks[0]?.match).toMatchObject({ phase: 'queued', candidates: [] });
-    expect(ws.tracks[0]?.match.signature).toBeUndefined();
+    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0, playlistId: pid(ws) }] });
+    expect(activePlaylist(ws).tracks[0]?.match).toMatchObject({ phase: 'queued', candidates: [] });
+    expect(activePlaylist(ws).tracks[0]?.match.signature).toBeUndefined();
     expect(workspaceReducer(ws, {
       type: 'matchResolved', id, signature: 'cancelled', candidates: [], at: 1,
     })).toBe(ws);
     ws = resolve(ws, id, rankCandidates(track, [recording()]));
-    expect(ws.tracks[0]?.match.phase).toBe('done');
+    expect(activePlaylist(ws).tracks[0]?.match.phase).toBe('done');
   });
 
   it('preserves completed results and manual selections when restored', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     const candidate = recording();
-    ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [candidate]));
+    ws = resolve(ws, id, rankCandidates(activePlaylist(ws).tracks[0]!, [candidate]));
     ws = workspaceReducer(ws, { type: 'selectCandidate', id, candidateId: candidate.id });
-    const track = ws.tracks[0]!;
+    const track = activePlaylist(ws).tracks[0]!;
     ws = workspaceReducer(ws, { type: 'delete', ids: [id] });
-    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0 }] });
-    expect(ws.tracks[0]).toBe(track);
+    ws = workspaceReducer(ws, { type: 'restore', entries: [{ track, index: 0, playlistId: pid(ws) }] });
+    expect(activePlaylist(ws).tracks[0]).toBe(track);
   });
 
   it('selects the top candidate when results arrive', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
-    const candidates = rankCandidates(ws.tracks[0]!, [recording({ title: 'Blinding Lights (Live)' }), recording()]);
+    const id = activePlaylist(ws).tracks[0]!.id;
+    const candidates = rankCandidates(activePlaylist(ws).tracks[0]!, [recording({ title: 'Blinding Lights (Live)' }), recording()]);
     ws = resolve(ws, id, candidates);
-    expect(ws.tracks[0]?.match.selectedId).toBe(candidates[0]?.recording.id);
-    expect(selectedCandidate(ws.tracks[0]!)?.recording.title).toBe('Blinding Lights');
+    expect(activePlaylist(ws).tracks[0]?.match.selectedId).toBe(candidates[0]?.recording.id);
+    expect(selectedCandidate(activePlaylist(ws).tracks[0]!)?.recording.title).toBe('Blinding Lights');
   });
 
   it('ignores stale results for an edited or deleted track', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'old' });
     ws = workspaceReducer(ws, { type: 'update', id, changes: { title: 'Save Your Tears' } });
     const after = workspaceReducer(ws, { type: 'matchResolved', id, signature: 'old', candidates: [], at: 1 });
@@ -135,7 +136,7 @@ describe('workspaceReducer', () => {
 
   it('records lookup failures and can retry only failed tracks', () => {
     let ws = withTracks(['A', 'B'], ['C', 'D']);
-    const [first, second] = ws.tracks;
+    const [first, second] = activePlaylist(ws).tracks;
     ws = run(
       [
         { type: 'matchStarted', id: first!.id, signature: 's1' },
@@ -145,70 +146,163 @@ describe('workspaceReducer', () => {
       ],
       ws,
     );
-    expect(ws.tracks[0]?.match).toMatchObject({ phase: 'error', error: 'offline' });
+    expect(activePlaylist(ws).tracks[0]?.match).toMatchObject({ phase: 'error', error: 'offline' });
     ws = workspaceReducer(ws, { type: 'requeue', onlyFailed: true });
-    expect(ws.tracks.map((t) => t.match.phase)).toEqual(['queued', 'done']);
+    expect(activePlaylist(ws).tracks.map((t) => t.match.phase)).toEqual(['queued', 'done']);
   });
 
   it('lets the user pick an alternative and keeps it when re-ranked', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     const clean = recording({ explicitness: 'clean' });
     const explicit = recording({ explicitness: 'explicit' });
-    ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [clean, explicit]));
-    expect(ws.tracks[0]?.match.selectedId).toBe(explicit.id);
+    ws = resolve(ws, id, rankCandidates(activePlaylist(ws).tracks[0]!, [clean, explicit]));
+    expect(activePlaylist(ws).tracks[0]?.match.selectedId).toBe(explicit.id);
 
     ws = workspaceReducer(ws, { type: 'selectCandidate', id, candidateId: clean.id });
-    expect(ws.tracks[0]?.match).toMatchObject({ selectedId: clean.id, userSelected: true });
+    expect(activePlaylist(ws).tracks[0]?.match).toMatchObject({ selectedId: clean.id, userSelected: true });
 
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'explicit' } });
-    expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
+    expect(activePlaylist(ws).tracks[0]?.match.selectedId).toBe(clean.id);
 
     expect(workspaceReducer(ws, { type: 'selectCandidate', id, candidateId: 'itunes:unknown' })).toBe(ws);
   });
 
   it('re-ranks automatic picks when the clean/explicit preference changes', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     const clean = recording({ explicitness: 'clean' });
     const explicit = recording({ explicitness: 'explicit' });
-    ws = resolve(ws, id, rankCandidates(ws.tracks[0]!, [clean, explicit]));
+    ws = resolve(ws, id, rankCandidates(activePlaylist(ws).tracks[0]!, [clean, explicit]));
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'clean' } });
-    expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
+    expect(activePlaylist(ws).tracks[0]?.match.selectedId).toBe(clean.id);
   });
 
   it('applies the latest explicit preference when in-flight results arrive', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    const id = ws.tracks[0]!.id;
+    const id = activePlaylist(ws).tracks[0]!.id;
     // Under the old preference the clean recording ranks ninth, outside the stored eight.
     const explicit = Array.from({ length: 8 }, () => recording({ explicitness: 'explicit' }));
     const clean = recording({ explicitness: 'clean' });
-    const oldCandidates = rankCandidates(ws.tracks[0]!, [...explicit, clean], 'any');
+    const oldCandidates = rankCandidates(activePlaylist(ws).tracks[0]!, [...explicit, clean], 'any');
     expect(oldCandidates.at(-1)?.recording.id).toBe(clean.id);
     ws = workspaceReducer(ws, { type: 'matchStarted', id, signature: 'old' });
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { explicitPreference: 'clean' } });
-    expect(ws.tracks[0]?.match.phase).toBe('searching');
+    expect(activePlaylist(ws).tracks[0]?.match.phase).toBe('searching');
     ws = workspaceReducer(ws, {
       type: 'matchResolved', id, signature: 'old', candidates: oldCandidates, at: 1,
     });
-    expect(ws.tracks[0]?.match.selectedId).toBe(clean.id);
-    expect(ws.tracks[0]?.match.candidates).toHaveLength(8);
+    expect(activePlaylist(ws).tracks[0]?.match.selectedId).toBe(clean.id);
+    expect(activePlaylist(ws).tracks[0]?.match.candidates).toHaveLength(8);
   });
 
   it('re-queues every track when the storefront changes', () => {
     let ws = withTracks(['The Weeknd', 'Blinding Lights']);
-    ws = resolve(ws, ws.tracks[0]!.id, rankCandidates(ws.tracks[0]!, [recording()]));
+    ws = resolve(ws, activePlaylist(ws).tracks[0]!.id, rankCandidates(activePlaylist(ws).tracks[0]!, [recording()]));
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { country: 'GB' } });
     expect(ws.settings.country).toBe('GB');
-    expect(ws.tracks[0]?.match.phase).toBe('queued');
+    expect(activePlaylist(ws).tracks[0]?.match.phase).toBe('queued');
   });
 
   it('clears the workspace but keeps settings', () => {
     let ws = withTracks(['A', 'B']);
     ws = workspaceReducer(ws, { type: 'updateSettings', changes: { country: 'CA' } });
     ws = workspaceReducer(ws, { type: 'clear' });
-    expect(ws.tracks).toEqual([]);
+    expect(activePlaylist(ws).tracks).toEqual([]);
     expect(ws.settings.country).toBe('CA');
+  });
+});
+
+describe('playlists', () => {
+  it('re-queues restored listings after a storefront change and ignores cancelled results', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights'], ['A', 'Searching']);
+    const [done, searching] = activePlaylist(ws).tracks;
+    ws = resolve(ws, done!.id, rankCandidates(done!, [recording()]));
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: [done!.id], status: 'purchased' });
+    ws = workspaceReducer(ws, { type: 'matchStarted', id: searching!.id, signature: 'cancelled' });
+    const deleted = activePlaylist(ws);
+    ws = run([
+      { type: 'deletePlaylist', id: deleted.id },
+      { type: 'updateSettings', changes: { country: 'GB' } },
+      { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: 'US' },
+    ], ws);
+    expect(activePlaylist(ws).tracks.map((t) => t.match)).toEqual([
+      { phase: 'queued', candidates: [] },
+      { phase: 'queued', candidates: [] },
+    ]);
+    expect(activePlaylist(ws).tracks[0]?.status).toBe('purchased');
+    expect(workspaceReducer(ws, {
+      type: 'matchResolved', id: searching!.id, signature: 'cancelled', candidates: [], at: 1,
+    })).toBe(ws);
+  });
+
+  it('re-ranks restored playlists with the current preference while keeping manual picks', () => {
+    let ws = withTracks(['The Weeknd', 'Blinding Lights'], ['The Weeknd', 'Blinding Lights']);
+    const clean = recording({ explicitness: 'clean' });
+    const explicit = recording({ explicitness: 'explicit' });
+    for (const track of activePlaylist(ws).tracks) {
+      ws = resolve(ws, track.id, rankCandidates(track, [clean, explicit]));
+    }
+    const manualId = activePlaylist(ws).tracks[1]!.id;
+    ws = workspaceReducer(ws, { type: 'selectCandidate', id: manualId, candidateId: explicit.id });
+    const deleted = activePlaylist(ws);
+    ws = run([
+      { type: 'deletePlaylist', id: deleted.id },
+      { type: 'updateSettings', changes: { explicitPreference: 'clean' } },
+      { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: 'US' },
+    ], ws);
+    expect(activePlaylist(ws).tracks.map((t) => t.match.selectedId)).toEqual([clean.id, explicit.id]);
+    expect(activePlaylist(ws).tracks[1]?.match.userSelected).toBe(true);
+  });
+
+  it('creates, renames, switches, deletes, and restores playlists', () => {
+    let ws = withTracks(['A', 'First']);
+    const first = ws.activePlaylistId;
+    ws = workspaceReducer(ws, { type: 'createPlaylist' });
+    const second = activePlaylist(ws);
+    expect(second).toMatchObject({ name: 'Playlist 2', tracks: [] });
+
+    // Imports go to the active playlist.
+    ws = workspaceReducer(ws, { type: 'import', source: 'manual', drafts: [{ artist: 'B', title: 'Second' }] });
+    expect(ws.playlists.map((p) => p.tracks.map((t) => t.title))).toEqual([['First'], ['Second']]);
+
+    ws = workspaceReducer(ws, { type: 'renamePlaylist', id: second.id, name: '  Friday   set ' });
+    expect(activePlaylist(ws).name).toBe('Friday set');
+    expect(workspaceReducer(ws, { type: 'renamePlaylist', id: second.id, name: '   ' })).toBe(ws);
+
+    ws = workspaceReducer(ws, { type: 'switchPlaylist', id: first });
+    expect(activePlaylist(ws).tracks[0]?.title).toBe('First');
+    expect(workspaceReducer(ws, { type: 'switchPlaylist', id: 'missing' })).toBe(ws);
+
+    // Deleting the active playlist selects a neighbour; undo puts it back where it was.
+    const deleted = ws.playlists[0]!;
+    ws = workspaceReducer(ws, { type: 'deletePlaylist', id: first });
+    expect(ws.playlists.map((p) => p.name)).toEqual(['Friday set']);
+    expect(ws.activePlaylistId).toBe(second.id);
+    ws = workspaceReducer(ws, { type: 'restorePlaylist', playlist: deleted, index: 0, active: true, country: ws.settings.country });
+    expect(ws.playlists.map((p) => p.name)).toEqual(['My playlist', 'Friday set']);
+    expect(ws.activePlaylistId).toBe(first);
+
+    // There is always a playlist.
+    ws = run([{ type: 'deletePlaylist', id: first }, { type: 'deletePlaylist', id: second.id }], ws);
+    expect(ws.playlists).toHaveLength(1);
+    expect(activePlaylist(ws)).toMatchObject({ name: 'My playlist', tracks: [] });
+  });
+
+  it('applies track actions in any playlist and matches the active playlist first', () => {
+    let ws = withTracks(['A', 'Background']);
+    const background = activePlaylist(ws).tracks[0]!;
+    ws = run([{ type: 'createPlaylist' }, { type: 'import', source: 'manual', drafts: [{ artist: 'B', title: 'On screen' }] }], ws);
+
+    expect(allTracks(ws).map((t) => t.title)).toEqual(['On screen', 'Background']);
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: [background.id], status: 'purchased' });
+    ws = workspaceReducer(ws, { type: 'matchStarted', id: background.id, signature: 's' });
+    expect(ws.playlists[0]?.tracks[0]).toMatchObject({ status: 'purchased', match: { phase: 'searching' } });
+
+    // List-wide actions only touch the active playlist.
+    ws = run([{ type: 'resetAllStatuses' }, { type: 'clear' }], ws);
+    expect(ws.playlists.map((p) => p.tracks.length)).toEqual([1, 0]);
+    expect(ws.playlists[0]?.tracks[0]?.status).toBe('purchased');
   });
 });
 
@@ -222,21 +316,21 @@ describe('duplicate detection', () => {
       ['The Weeknd', 'Blinding Lights - 2020 Remaster'],
       ['Daft Punk', 'One More Time'],
     );
-    const groups = findDuplicates(ws.tracks);
+    const groups = findDuplicates(activePlaylist(ws).tracks);
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.keep.id).toBe(ws.tracks[0]?.id);
-    expect(groups[0]?.remove.map((t) => t.id)).toEqual([ws.tracks[1]!.id, ws.tracks[2]!.id, ws.tracks[4]!.id]);
+    expect(groups[0]?.keep.id).toBe(activePlaylist(ws).tracks[0]?.id);
+    expect(groups[0]?.remove.map((t) => t.id)).toEqual([activePlaylist(ws).tracks[1]!.id, activePlaylist(ws).tracks[2]!.id, activePlaylist(ws).tracks[4]!.id]);
   });
 
   it('keeps the copy with the most progress', () => {
     let ws = withTracks(['A', 'Song'], ['A', 'Song']);
-    ws = workspaceReducer(ws, { type: 'setStatus', ids: [ws.tracks[1]!.id], status: 'purchased' });
-    expect(findDuplicates(ws.tracks)[0]?.keep.id).toBe(ws.tracks[1]?.id);
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: [activePlaylist(ws).tracks[1]!.id], status: 'purchased' });
+    expect(findDuplicates(activePlaylist(ws).tracks)[0]?.keep.id).toBe(activePlaylist(ws).tracks[1]?.id);
   });
 
   it('treats different remixes and live versions as legitimate alternates', () => {
     const ws = withTracks(['Calvin Harris', 'Summer'], ['Calvin Harris', 'Summer (R3hab Remix)'], ['Calvin Harris', 'Summer (Tiësto Remix)'], ['Calvin Harris', 'Summer - Live']);
-    expect(findDuplicates(ws.tracks)).toEqual([]);
-    expect(findAlternateVersions(ws.tracks).size).toBe(4);
+    expect(findDuplicates(activePlaylist(ws).tracks)).toEqual([]);
+    expect(findAlternateVersions(activePlaylist(ws).tracks).size).toBe(4);
   });
 });

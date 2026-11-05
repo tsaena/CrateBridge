@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BACKUP_KEY, SCHEMA_VERSION, STORAGE_KEY, loadWorkspace, saveWorkspace, type StorageLike } from './storage';
-import { emptyWorkspace, workspaceReducer } from './workspace';
+import { activePlaylist, emptyWorkspace, workspaceReducer } from './workspace';
 import { rankCandidates } from '../lib/matching/rank';
 import { recording } from '../test/fixtures';
 
@@ -27,7 +27,7 @@ function sampleWorkspace() {
       { artist: 'Daft Punk', title: 'One More Time' },
     ],
   });
-  const [first, second] = ws.tracks;
+  const [first, second] = activePlaylist(ws).tracks;
   const candidates = rankCandidates(first!, [recording(), recording({ title: 'Blinding Lights (Live)' })]);
   ws = workspaceReducer(ws, { type: 'matchStarted', id: first!.id, signature: 's' });
   ws = workspaceReducer(ws, { type: 'matchResolved', id: first!.id, signature: 's', candidates, at: 5 });
@@ -48,39 +48,69 @@ describe('workspace persistence', () => {
     const storage = memoryStorage();
     let ws = sampleWorkspace();
     // Settings changes re-queue tracks; resolve the first one again so it has a selection to persist.
-    const first = ws.tracks[0]!;
+    const first = activePlaylist(ws).tracks[0]!;
     const candidates = rankCandidates(first, [recording(), recording({ title: 'Blinding Lights (Live)' })]);
     ws = workspaceReducer(ws, { type: 'matchStarted', id: first.id, signature: 'x' });
     ws = workspaceReducer(ws, { type: 'matchResolved', id: first.id, signature: 'x', candidates, at: 9 });
     ws = workspaceReducer(ws, { type: 'selectCandidate', id: first.id, candidateId: candidates[1]!.recording.id });
+    const firstPlaylist = ws.activePlaylistId;
+    ws = workspaceReducer(ws, { type: 'createPlaylist', name: 'Friday set' });
+    ws = workspaceReducer(ws, { type: 'import', source: 'manual', drafts: [{ artist: 'Robyn', title: 'Dancing On My Own' }] });
+    ws = workspaceReducer(ws, { type: 'switchPlaylist', id: firstPlaylist });
 
     expect(saveWorkspace(ws, storage)).toEqual({ ok: true });
+    // Ratings and reasons are recomputed on load, so they aren't stored.
+    expect(storage.data[STORAGE_KEY]).not.toContain('"reasons"');
     const loaded = loadWorkspace(storage);
     expect(loaded.kind).toBe('restored');
     const restored = loaded.workspace;
+    expect(restored.playlists.map((p) => [p.name, p.tracks.length])).toEqual([['My playlist', 2], ['Friday set', 1]]);
+    expect(restored.activePlaylistId).toBe(firstPlaylist);
     expect(restored.settings).toEqual({ country: 'GB', explicitPreference: 'clean', searchModifiers: ['Extended'], autoMatch: true });
-    expect(restored.tracks[0]).toMatchObject({
+    expect(activePlaylist(restored).tracks[0]).toMatchObject({
       id: first.id,
       status: 'purchased',
       match: { phase: 'done', selectedId: candidates[1]!.recording.id, userSelected: true },
     });
-    expect(restored.tracks[0]?.match.candidates).toHaveLength(2);
-    expect(restored.tracks[0]?.match.candidates[0]?.reasons.length).toBeGreaterThan(0);
+    expect(activePlaylist(restored).tracks[0]?.match.candidates).toHaveLength(2);
+    expect(activePlaylist(restored).tracks[0]?.match.candidates[0]?.reasons.length).toBeGreaterThan(0);
+  });
+
+  it('migrates a version 1 workspace into a first playlist and re-rates its matches', () => {
+    // Saved before producer-named edits were recognized, so the edit was rated High.
+    const edit = recording({ artist: 'Lady Gaga', title: 'Poker Face (Jody Den Broeder Edit)' });
+    const raw = JSON.stringify({
+      version: 1,
+      workspace: {
+        settings: { country: 'CA' },
+        tracks: [{ id: 't1', artist: 'Lady Gaga', title: 'Poker Face', status: 'found', match: {
+          phase: 'done', selectedId: edit.id, candidates: [{ recording: edit, score: 99, confidence: 'high', reasons: [] }],
+        } }],
+      },
+    });
+    const loaded = loadWorkspace(memoryStorage({ [STORAGE_KEY]: raw }));
+    expect(loaded.kind).toBe('restored');
+    const { playlists, activePlaylistId, settings } = loaded.workspace;
+    expect(playlists).toHaveLength(1);
+    expect(playlists[0]).toMatchObject({ id: activePlaylistId, name: 'My playlist' });
+    expect(settings.country).toBe('CA');
+    expect(playlists[0]?.tracks[0]).toMatchObject({ id: 't1', status: 'found' });
+    expect(playlists[0]?.tracks[0]?.match.candidates[0]?.confidence).toBe('review');
   });
 
   it('re-queues lookups that were in progress when the page closed', () => {
     const storage = memoryStorage();
     let ws = workspaceReducer(emptyWorkspace(), { type: 'import', source: 'paste', drafts: [{ artist: 'A', title: 'B' }] });
-    ws = workspaceReducer(ws, { type: 'matchStarted', id: ws.tracks[0]!.id, signature: 's' });
+    ws = workspaceReducer(ws, { type: 'matchStarted', id: activePlaylist(ws).tracks[0]!.id, signature: 's' });
     saveWorkspace(ws, storage);
-    expect(loadWorkspace(storage).workspace.tracks[0]?.match.phase).toBe('queued');
+    expect(activePlaylist(loadWorkspace(storage).workspace).tracks[0]?.match.phase).toBe('queued');
   });
 
   it('recovers from corrupted JSON and keeps a backup', () => {
     const storage = memoryStorage({ [STORAGE_KEY]: '{"version":1,"workspace":{"tracks":[' });
     const loaded = loadWorkspace(storage);
     expect(loaded.kind).toBe('recovered');
-    expect(loaded.workspace.tracks).toEqual([]);
+    expect(activePlaylist(loaded.workspace).tracks).toEqual([]);
     expect(storage.data[BACKUP_KEY]).toBe('{"version":1,"workspace":{"tracks":[');
   });
 
@@ -117,14 +147,16 @@ describe('workspace persistence', () => {
     if (loaded.kind !== 'restored') return;
     expect(loaded.droppedTracks).toBe(4);
     expect(loaded.workspace.settings).toEqual({ country: 'US', explicitPreference: 'any', searchModifiers: ['Extended'], autoMatch: true });
-    const [t1, t4] = loaded.workspace.tracks;
+    const [t1, t4] = activePlaylist(loaded.workspace).tracks;
     expect(t1).toMatchObject({ id: 't1', status: 'not_started', source: 'manual' });
     const candidate = t1?.match.candidates[0];
     expect(candidate?.recording.listingUrl).toBeUndefined();
     expect(candidate?.recording.artworkUrl).toBeUndefined();
     expect(candidate?.recording.price).toBeUndefined();
-    expect(candidate?.confidence).toBe('review');
-    expect(candidate?.reasons).toEqual([{ effect: 'plus', text: 'ok' }]);
+    // Stored ratings are ignored and recomputed from the recording itself.
+    expect(candidate?.confidence).toBe('high');
+    expect(candidate?.reasons.map((r) => r.text)).toContain('Title matches');
+    expect(candidate?.reasons.map((r) => r.text)).not.toContain('ok');
     expect(t4?.match).toEqual({ phase: 'queued', candidates: [] });
   });
 
@@ -137,7 +169,7 @@ describe('workspace persistence', () => {
         ] } }],
       },
     });
-    const url = loadWorkspace(memoryStorage({ [STORAGE_KEY]: raw })).workspace.tracks[0]?.match.candidates[0]?.recording.listingUrl;
+    const url = activePlaylist(loadWorkspace(memoryStorage({ [STORAGE_KEY]: raw })).workspace).tracks[0]?.match.candidates[0]?.recording.listingUrl;
     expect(url).toBe('https://music.apple.com/us/album/b/1?i=2&uo=4&app=itunes');
   });
 

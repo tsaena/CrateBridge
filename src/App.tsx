@@ -6,8 +6,8 @@ import { createItunesProvider } from './lib/providers/itunes';
 import { findAlternateVersions, findDuplicates } from './lib/duplicates';
 import { usePersistentWorkspace } from './hooks/usePersistentWorkspace';
 import { useMatcher } from './hooks/useMatcher';
-import { clearStoredWorkspace, type StorageLike } from './state/storage';
-import { selectedCandidate } from './state/workspace';
+import type { StorageLike } from './state/storage';
+import { activePlaylist, selectedCandidate } from './state/workspace';
 import {
   DEFAULT_VIEW,
   exportChecklistCsv,
@@ -17,6 +17,7 @@ import {
   type ViewOptions,
 } from './state/selectors';
 import { Header } from './components/Header';
+import { PlaylistBar } from './components/PlaylistBar';
 import { ImportPanel } from './components/ImportPanel';
 import { SummaryBar } from './components/SummaryBar';
 import { Toolbar } from './components/Toolbar';
@@ -38,7 +39,9 @@ export default function App({ service: injectedService, storage }: AppProps) {
   const [service] = useState(() => injectedService ?? new CatalogSearchService(createItunesProvider()));
   const { workspace, dispatch, persistence, dismissRecovery } = usePersistentWorkspace(storage);
   const { status: matcher, prioritize } = useMatcher(workspace, dispatch, service);
-  const { tracks, settings } = workspace;
+  const { settings } = workspace;
+  const playlist = activePlaylist(workspace);
+  const tracks = playlist.tracks;
 
   const [view, setView] = useState<ViewOptions>(DEFAULT_VIEW);
   const [activeId, setActiveId] = useState<string>();
@@ -49,6 +52,8 @@ export default function App({ service: injectedService, storage }: AppProps) {
   const [toast, setToast] = useState<ToastMessage>();
   const [returnTrackId, setReturnTrackId] = useState<string>();
   const [confirm, setConfirm] = useState<'clear' | 'reset'>();
+  /** True right after creating a playlist, so its name opens for editing. */
+  const [justCreated, setJustCreated] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const openedListing = useRef<{ id: string; at: number }>(undefined);
 
@@ -81,17 +86,20 @@ export default function App({ service: injectedService, storage }: AppProps) {
   // --- Track actions -------------------------------------------------------
 
   // Latest values for event handlers that shouldn't re-subscribe on every change.
+  const workspaceRef = useRef(workspace);
   const tracksRef = useRef(tracks);
   const visibleRef = useRef(visible);
   useEffect(() => {
+    workspaceRef.current = workspace;
     tracksRef.current = tracks;
     visibleRef.current = visible;
-  }, [tracks, visible]);
+  }, [workspace, tracks, visible]);
 
   const removeTracks = useCallback(
     (ids: string[], label: string) => {
-      const current = tracksRef.current;
-      const entries = current.flatMap((track, index) => (ids.includes(track.id) ? [{ track, index }] : []));
+      const entries = workspaceRef.current.playlists.flatMap((p) =>
+        p.tracks.flatMap((track, index) => (ids.includes(track.id) ? [{ track, index, playlistId: p.id }] : [])),
+      );
       if (entries.length === 0) return;
       dispatch({ type: 'delete', ids });
       showToast({ text: label, actionLabel: 'Undo', onAction: () => dispatch({ type: 'restore', entries }) });
@@ -247,12 +255,47 @@ export default function App({ service: injectedService, storage }: AppProps) {
     showToast({ text: `Imported ${count} ${count === 1 ? 'track' : 'tracks'}. Matching against the iTunes catalog…` });
   };
 
+  const resetTrackUi = () => {
+    setActiveId(undefined);
+    setExpandedId(undefined);
+    setReturnTrackId(undefined);
+    setConfirm(undefined);
+  };
+
+  const switchPlaylist = (id: string) => {
+    resetTrackUi();
+    setJustCreated(false);
+    dispatch({ type: 'switchPlaylist', id });
+  };
+
+  const createPlaylist = () => {
+    resetTrackUi();
+    setJustCreated(true);
+    dispatch({ type: 'createPlaylist' });
+  };
+
+  const deletePlaylist = (id: string) => {
+    const current = workspaceRef.current;
+    const index = current.playlists.findIndex((p) => p.id === id);
+    const deleted = current.playlists[index];
+    if (!deleted) return;
+    const wasActive = current.activePlaylistId === id;
+    resetTrackUi();
+    setJustCreated(false);
+    dispatch({ type: 'deletePlaylist', id });
+    showToast({
+      text: `Deleted “${deleted.name}”`,
+      actionLabel: 'Undo',
+      onAction: () => dispatch({ type: 'restorePlaylist', playlist: deleted, index, active: wasActive, country: current.settings.country }),
+    });
+  };
+
   const exportCsv = () => {
     const blob = new Blob([exportChecklistCsv(tracks)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `cratebridge-checklist-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `cratebridge-${fileSlug(playlist.name)}-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -269,6 +312,17 @@ export default function App({ service: injectedService, storage }: AppProps) {
         onToggleSettings={() => setSettingsOpen((v) => !v)}
         onExport={hasTracks ? exportCsv : undefined}
         onShowShortcuts={hasTracks ? () => setHelpOpen((v) => !v) : undefined}
+      />
+
+      <PlaylistBar
+        key={playlist.id}
+        playlists={workspace.playlists}
+        activeId={playlist.id}
+        startRenaming={justCreated}
+        onSwitch={switchPlaylist}
+        onCreate={createPlaylist}
+        onRename={(id, name) => dispatch({ type: 'renamePlaylist', id, name })}
+        onDelete={deletePlaylist}
       />
 
       {persistence.recoveryMessage && (
@@ -363,7 +417,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
                 {confirm ? (
                   <span className="flex items-center gap-2 rounded-lg border border-nomatch-400/30 bg-nomatch-400/5 px-2 py-1">
                     {confirm === 'clear'
-                      ? `Remove all ${tracks.length} tracks from this browser?`
+                      ? `Remove all ${tracks.length} tracks from “${playlist.name}”?`
                       : 'Set every track back to Not Started?'}
                     <button
                       type="button"
@@ -371,16 +425,14 @@ export default function App({ service: injectedService, storage }: AppProps) {
                       onClick={() => {
                         if (confirm === 'clear') {
                           dispatch({ type: 'clear' });
-                          clearStoredWorkspace(storage);
-                          setExpandedId(undefined);
-                          setActiveId(undefined);
+                          resetTrackUi();
                         } else {
                           dispatch({ type: 'resetAllStatuses' });
                         }
                         setConfirm(undefined);
                       }}
                     >
-                      {confirm === 'clear' ? 'Clear workspace' : 'Reset statuses'}
+                      {confirm === 'clear' ? 'Clear playlist' : 'Reset statuses'}
                     </button>
                     <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={() => setConfirm(undefined)}>
                       Cancel
@@ -394,7 +446,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
                     </button>
                     <button type="button" className="btn btn-ghost px-2.5 py-1.5 text-xs hover:text-nomatch-400" onClick={() => setConfirm('clear')}>
                       <Trash2 aria-hidden className="size-3.5" />
-                      Clear workspace
+                      Clear playlist
                     </button>
                   </>
                 )}
@@ -424,6 +476,19 @@ export default function App({ service: injectedService, storage }: AppProps) {
         {toast && <Toast key={toast.id} toast={toast} onDismiss={() => setToast(undefined)} />}
       </div>
     </div>
+  );
+}
+
+/** A filesystem-friendly version of a playlist name for download filenames. */
+function fileSlug(name: string): string {
+  return (
+    name
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'playlist'
   );
 }
 

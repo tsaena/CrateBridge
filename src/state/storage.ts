@@ -1,27 +1,39 @@
 import type {
   CatalogRecording,
-  Confidence,
-  MatchReason,
+  ExplicitPreference,
   MatchState,
+  Playlist,
   PurchaseStatus,
-  RankedCandidate,
   Track,
   TrackSource,
   Workspace,
   WorkspaceSettings,
 } from '../types';
 import { PURCHASE_STATUSES } from '../types';
-import { DEFAULT_SETTINGS, emptyWorkspace } from './workspace';
+import {
+  DEFAULT_PLAYLIST_NAME,
+  DEFAULT_SETTINGS,
+  MAX_PLAYLIST_NAME_LENGTH,
+  createId,
+  emptyWorkspace,
+  newPlaylist,
+} from './workspace';
 import { itunesStoreUrl, safeAppleUrl } from '../lib/providers/itunes';
+import { rankCandidates, type MatchRequest } from '../lib/matching/rank';
+import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
 
 export const STORAGE_KEY = 'cratebridge:workspace';
 export const BACKUP_KEY = 'cratebridge:workspace:backup';
-export const SCHEMA_VERSION = 1;
+/**
+ * 1: a single list of tracks.
+ * 2: named playlists; match ratings are recomputed on load instead of stored.
+ */
+export const SCHEMA_VERSION = 2;
 
 interface StoredWorkspace {
   version: number;
   savedAt: number;
-  workspace: Workspace;
+  workspace: unknown;
 }
 
 export type LoadOutcome =
@@ -94,15 +106,10 @@ export function saveWorkspace(workspace: Workspace, storage: StorageLike | undef
     storage.setItem(STORAGE_KEY, JSON.stringify(payload));
     return { ok: true };
   } catch {
-    return { ok: false, message: 'Browser storage is full or blocked, so recent changes weren’t saved.' };
-  }
-}
-
-export function clearStoredWorkspace(storage: StorageLike | undefined = defaultStorage()): void {
-  try {
-    storage?.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing else to do; the in-memory workspace is already cleared.
+    return {
+      ok: false,
+      message: 'Browser storage is full or blocked, so recent changes weren’t saved. Deleting playlists you no longer need frees up space.',
+    };
   }
 }
 
@@ -114,13 +121,25 @@ function backup(storage: StorageLike, raw: string): void {
   }
 }
 
-/** Drop transient state before saving: in-flight searches are re-queued on load. */
-function compact(workspace: Workspace): Workspace {
+/**
+ * Shape the workspace for storage: in-flight searches are saved as queued, and
+ * candidates keep only their recordings, since ratings are recomputed on load.
+ */
+function compact(workspace: Workspace): unknown {
   return {
     settings: workspace.settings,
-    tracks: workspace.tracks.map((t) =>
-      t.match.phase === 'searching' ? { ...t, match: { ...t.match, phase: 'queued' } } : t,
-    ),
+    activePlaylistId: workspace.activePlaylistId,
+    playlists: workspace.playlists.map((p) => ({
+      ...p,
+      tracks: p.tracks.map((t) => ({
+        ...t,
+        match: {
+          ...t.match,
+          phase: t.match.phase === 'searching' ? 'queued' : t.match.phase,
+          candidates: t.match.candidates.map((c) => ({ recording: c.recording })),
+        },
+      })),
+    })),
   };
 }
 
@@ -137,21 +156,47 @@ const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 const SOURCES: TrackSource[] = ['paste', 'csv', 'manual', 'sample'];
-const CONFIDENCES: Confidence[] = ['high', 'review', 'none'];
 
 export function sanitizeWorkspace(value: Record<string, unknown>): { workspace: Workspace; dropped: number } {
   const settings = sanitizeSettings(value.settings);
-  const rawTracks = Array.isArray(value.tracks) ? value.tracks : [];
-  const tracks: Track[] = [];
-  const ids = new Set<string>();
-  for (const raw of rawTracks) {
-    const track = sanitizeTrack(raw);
-    if (track && !ids.has(track.id)) {
-      ids.add(track.id);
-      tracks.push(track);
+  const trackIds = new Set<string>();
+  let seen = 0;
+  let kept = 0;
+  const readTracks = (raw: unknown): Track[] => {
+    const list = Array.isArray(raw) ? raw : [];
+    seen += list.length;
+    const tracks: Track[] = [];
+    for (const item of list) {
+      const track = sanitizeTrack(item, settings.explicitPreference);
+      // Track ids must be unique across every playlist.
+      if (track && !trackIds.has(track.id)) {
+        trackIds.add(track.id);
+        tracks.push(track);
+      }
     }
+    kept += tracks.length;
+    return tracks;
+  };
+
+  let playlists: Playlist[];
+  if (Array.isArray(value.playlists)) {
+    const playlistIds = new Set<string>();
+    playlists = value.playlists.filter(isRecord).map((raw, index) => {
+      const storedId = str(raw.id);
+      const id = storedId && !playlistIds.has(storedId) ? storedId : createId('p');
+      playlistIds.add(id);
+      const name = str(raw.name)?.trim().slice(0, MAX_PLAYLIST_NAME_LENGTH) || `Playlist ${index + 1}`;
+      return { id, name, createdAt: num(raw.createdAt) ?? 0, tracks: readTracks(raw.tracks) };
+    });
+  } else {
+    // Version 1 stored one list of tracks; it becomes the first playlist.
+    playlists = [{ ...newPlaylist(DEFAULT_PLAYLIST_NAME, 0), tracks: readTracks(value.tracks) }];
   }
-  return { workspace: { settings, tracks }, dropped: rawTracks.length - tracks.length };
+  if (playlists.length === 0) playlists = [newPlaylist(DEFAULT_PLAYLIST_NAME)];
+
+  const storedActive = str(value.activePlaylistId);
+  const activePlaylistId = playlists.some((p) => p.id === storedActive) ? storedActive! : playlists[0]!.id;
+  return { workspace: { playlists, activePlaylistId, settings }, dropped: seen - kept };
 }
 
 function sanitizeSettings(value: unknown): WorkspaceSettings {
@@ -168,7 +213,7 @@ function sanitizeSettings(value: unknown): WorkspaceSettings {
   };
 }
 
-function sanitizeTrack(value: unknown): Track | undefined {
+function sanitizeTrack(value: unknown, preference: ExplicitPreference): Track | undefined {
   if (!isRecord(value)) return undefined;
   const id = str(value.id);
   const artist = str(value.artist) ?? '';
@@ -176,44 +221,45 @@ function sanitizeTrack(value: unknown): Track | undefined {
   if (!id || (!artist && !title)) return undefined;
   const status = PURCHASE_STATUSES.includes(value.status as PurchaseStatus) ? (value.status as PurchaseStatus) : 'not_started';
   const source = SOURCES.includes(value.source as TrackSource) ? (value.source as TrackSource) : 'manual';
+  const request: MatchRequest = { artist, title, album: str(value.album), durationMs: num(value.durationMs), isrc: str(value.isrc) };
   return {
     id,
-    artist,
-    title,
-    album: str(value.album),
-    durationMs: num(value.durationMs),
-    isrc: str(value.isrc),
+    ...request,
     source,
     status,
     addedAt: num(value.addedAt) ?? 0,
     parseWarning: str(value.parseWarning),
     searchOverride: str(value.searchOverride),
-    match: sanitizeMatch(value.match),
+    match: sanitizeMatch(value.match, request, preference),
   };
 }
 
-function sanitizeMatch(value: unknown): MatchState {
+function sanitizeMatch(value: unknown, request: MatchRequest, preference: ExplicitPreference): MatchState {
   if (!isRecord(value)) return { phase: 'queued', candidates: [] };
-  const candidates = Array.isArray(value.candidates)
-    ? value.candidates.map(sanitizeCandidate).filter((c): c is RankedCandidate => Boolean(c))
-    : [];
   const phase = value.phase;
   const done = phase === 'done';
   const error = phase === 'error';
+  const recordings = done && Array.isArray(value.candidates)
+    ? value.candidates.map(sanitizeRecording).filter((r): r is CatalogRecording => Boolean(r))
+    : [];
+  // Ratings and reasons are recomputed so they always follow the current matching rules.
+  const candidates = rankCandidates(request, recordings, preference).slice(0, MAX_STORED_CANDIDATES);
   const selectedId = str(value.selectedId);
+  const userSelected = value.userSelected === true && candidates.some((c) => c.recording.id === selectedId);
   return {
     // Anything that wasn't finished is looked up again.
     phase: done ? 'done' : error ? 'error' : 'queued',
     signature: done || error ? str(value.signature) : undefined,
-    candidates: done ? candidates : [],
-    selectedId: selectedId && candidates.some((c) => c.recording.id === selectedId) ? selectedId : candidates[0]?.recording.id,
-    userSelected: value.userSelected === true ? true : undefined,
+    candidates,
+    selectedId: userSelected ? selectedId : candidates[0]?.recording.id,
+    userSelected: userSelected ? true : undefined,
     error: error ? str(value.error) : undefined,
     searchedAt: num(value.searchedAt),
   };
 }
 
-function sanitizeCandidate(value: unknown): RankedCandidate | undefined {
+/** Accepts a stored candidate (`{ recording }`) from any schema version. */
+function sanitizeRecording(value: unknown): CatalogRecording | undefined {
   if (!isRecord(value) || !isRecord(value.recording)) return undefined;
   const r = value.recording;
   const id = str(r.id);
@@ -221,7 +267,7 @@ function sanitizeCandidate(value: unknown): RankedCandidate | undefined {
   const artist = str(r.artist);
   if (!id || !title || !artist) return undefined;
   const explicitness = r.explicitness;
-  const recording: CatalogRecording = {
+  return {
     id,
     provider: 'itunes',
     title,
@@ -238,18 +284,6 @@ function sanitizeCandidate(value: unknown): RankedCandidate | undefined {
     releaseDate: str(r.releaseDate),
     genre: str(r.genre),
     isrc: str(r.isrc),
-  };
-  const reasons: MatchReason[] = Array.isArray(value.reasons)
-    ? value.reasons.filter(
-        (x): x is MatchReason =>
-          isRecord(x) && typeof x.text === 'string' && (x.effect === 'plus' || x.effect === 'minus' || x.effect === 'neutral'),
-      )
-    : [];
-  return {
-    recording,
-    score: num(value.score) ?? 0,
-    confidence: CONFIDENCES.includes(value.confidence as Confidence) ? (value.confidence as Confidence) : 'review',
-    reasons,
   };
 }
 

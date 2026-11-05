@@ -18,13 +18,14 @@ Buying a playlist track by track means opening the playlist, searching the store
 - **Search elsewhere**: every track also has one-click searches on Amazon Digital Music, Beatport, and Bandcamp, plus Apple Music web search (labelled as a streaming catalog). These keep working when the iTunes API is unreachable.
 - **Track progress** with Not Started / Found / Purchased / Skipped statuses, a progress bar, counts, and a known-cost estimate (unknown prices are counted separately, never guessed). When you come back from a store tab, CrateBridge asks whether you bought the track; it never marks anything purchased on its own.
 - **Work quickly** with filters, search, sorting (including "needs attention first"), and keyboard shortcuts (`J`/`K` move, `O` open listing, `P` purchased, `S` skip, `F` found, `V` versions, `/` filter, `?` help).
-- **Manage the list**: edit or remove tracks (with undo), detect duplicates (removal requires confirmation, and alternate versions are kept), and export the checklist as CSV.
+- **Playlists**: keep separate named playlists, for example one per set, and switch between them. Each has its own tracks, picks, and statuses. Settings are shared, and lookups continue in the background for every playlist.
+- **Manage the list**: edit or remove tracks (with undo), detect duplicates (removal requires confirmation, and alternate versions are kept), and export the playlist's checklist as CSV.
 - **Settings**: iTunes storefront (default US), clean/explicit preference, and extra words for external searches (Clean, Extended, Radio Edit, …).
 - **Saved locally**: the workspace is stored in your browser's `localStorage` and restored on reload. Corrupted or unreadable data is backed up and replaced with a fresh workspace instead of crashing the app.
 
 ## Using it
 
-CrateBridge is deployed to GitHub Pages at **https://tsaena.github.io/CrateBridge/** after every merge to `main`. It works in any modern browser, with nothing to install.
+CrateBridge is deployed to GitHub Pages at **https://tsaena.github.io/CrateBridge/** after every merge to `main`. Use a modern desktop browser, with nothing to install. iPhone support is currently deferred; see Known limitations.
 
 Each site keeps its own workspace in browser storage, so playlists built on `localhost` don't appear on the hosted site. Use *Export CSV* and the CSV import to move them.
 
@@ -88,7 +89,7 @@ src/
 - **Retailers** implement `CatalogProvider` (`search(query) → CatalogRecording[]`). Adding Beatport or Bandcamp means another provider plus a `provider` value on recordings, without changing the workspace or ranking.
 - **Matching** scores each candidate on title, primary and featured artists, version descriptors (remix, live, extended, radio edit, karaoke/cover, …), clean/explicit metadata and preference, duration, album, ISRC when available, and whether it is sold individually. The point values live in one table (`WEIGHTS`), each rule adds a human-readable reason, and the confidence class comes from explicit conditions (for example, *High* requires an exact title, a matching artist, no version conflict, and no large duration gap). Scores only order candidates and are never shown as probabilities.
 - **Requests** go through one queue that starts at most one request every 4 seconds, retries network and server errors with exponential backoff, pauses the entire queue for 30 seconds (then 60) after a rate-limit response (HTTP 403/429) or a failed JSONP request, which hides its status and may be a rate limit, caches results in memory, shares identical in-flight queries, and lets a track you're looking at jump the queue. Results are tagged with a signature of the query, so a response for a track that was since edited, re-queued, or deleted is discarded.
-- **Persistence** saves tracks, selections (up to 8 compact candidates per track, enough to re-rank without re-querying), statuses, and settings under a versioned key. Every field is validated on load. Lookups that were in flight are re-queued.
+- **Persistence** saves playlists, tracks, selections, statuses, and settings under a versioned key. Each track keeps up to 8 candidate recordings, enough to compare versions without re-querying. Match ratings and their reasons aren't stored: they are recomputed on load, which keeps storage small and keeps saved ratings in line with the current matching rules. Every field is validated on load, older saved workspaces are migrated, and lookups that were in flight are re-queued.
 
 ## iTunes Search API notes and limitations
 
@@ -103,9 +104,9 @@ src/
 
 ## Known limitations
 
+- **iPhone support is deferred** as of November 5, 2026. Catalog lookups have a known failure on iPhone Safari ([#4](https://github.com/tsaena/CrateBridge/issues/4)). iPhone-specific investigation, fixes, and store-link verification are deprioritized until the maintainer explicitly revisits them; they do not block desktop work or deployment.
 - Spotify and Apple Music playlist URLs can't be imported directly (that needs OAuth). Paste the tracklist text or use a CSV export.
 - Data lives only in this browser's `localStorage`. There is **no cloud backup or cross-device sync**, and clearing site data removes it. Use *Export CSV* to keep a copy.
-- Only one workspace (playlist) at a time.
 - Matching is heuristic. Unusual titles, classical works, and artists whose catalog credits differ a lot from the playlist may need a manual pick or a refined search.
 - The JSONP fallback injects a script from `itunes.apple.com`. It is only used when a direct `fetch` fails.
 
@@ -113,7 +114,6 @@ src/
 
 Possible future work, roughly in priority order:
 
-- Multiple saved playlists/workspaces
 - Spotify / Apple Music playlist import via their official APIs (OAuth)
 - More retailers through `CatalogProvider` (Beatport, Bandcamp, Amazon) and multi-store price comparison
 - Comparison with an existing Serato library, and detection of tracks already owned or purchased

@@ -212,12 +212,42 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Start a purchase list' })).toBeInTheDocument();
   });
 
-  it('clears the workspace after confirmation', async () => {
+  it('keeps separate playlists that can be created, switched, and deleted with undo', async () => {
     const { user } = setup();
     await pasteAndImport(user, 'The Weeknd - Blinding Lights');
-    await user.click(screen.getByRole('button', { name: 'Clear workspace' }));
-    expect(screen.getByText(/Remove all 1 tracks/)).toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: 'Clear workspace' }).at(-1)!);
+
+    await user.click(screen.getByRole('button', { name: 'New playlist' }));
+    const name = screen.getByLabelText('Playlist name');
+    expect(name).toHaveFocus();
+    await user.clear(name);
+    await user.type(name, 'Friday set{Enter}');
+    expect(screen.getByRole('heading', { name: 'Start a purchase list' })).toBeInTheDocument();
+    await pasteAndImport(user, 'Daft Punk - One More Time');
+    expect(row('One More Time')).toBeInTheDocument();
+    expect(screen.queryByText('Blinding Lights', { selector: 'p' })).not.toBeInTheDocument();
+
+    const picker = screen.getByLabelText('Current playlist');
+    expect(within(picker).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'My playlist (1 track)',
+      'Friday set (1 track)',
+    ]);
+    await user.selectOptions(picker, 'My playlist (1 track)');
+    expect(row('Blinding Lights')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Delete playlist' }));
+    expect(row('One More Time')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(row('Blinding Lights')).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Current playlist')).getAllByRole('option')).toHaveLength(2);
+  });
+
+  it('clears the playlist after confirmation', async () => {
+    const { user } = setup();
+    await pasteAndImport(user, 'The Weeknd - Blinding Lights');
+    await user.click(screen.getByRole('button', { name: 'Clear playlist' }));
+    expect(screen.getByText(/Remove all 1 tracks from “My playlist”/)).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Clear playlist' }).at(-1)!);
     expect(screen.getByRole('heading', { name: 'Start a purchase list' })).toBeInTheDocument();
   });
 });

@@ -119,8 +119,19 @@ export interface WorkspaceSettings {
   autoMatch: boolean;
 }
 
-export interface Workspace {
+/** A named list of tracks to buy, e.g. one DJ set. */
+export interface Playlist {
+  id: string;
+  name: string;
+  createdAt: number;
   tracks: Track[];
+}
+
+export interface Workspace {
+  /** Always at least one playlist. Track ids are unique across all playlists. */
+  playlists: Playlist[];
+  activePlaylistId: string;
+  /** Shared by every playlist. */
   settings: WorkspaceSettings;
 }
 
