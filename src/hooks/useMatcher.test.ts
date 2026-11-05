@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CatalogSearchService } from '../lib/catalog/searchService';
 import { CatalogError, type CatalogProvider } from '../lib/providers/types';
-import { emptyWorkspace, workspaceReducer } from '../state/workspace';
+import { activePlaylist, emptyWorkspace, workspaceReducer } from '../state/workspace';
 import { recording } from '../test/fixtures';
 import type { CatalogRecording } from '../types';
 import { useMatcher } from './useMatcher';
@@ -29,14 +29,14 @@ describe('useMatcher recovery', () => {
   it('completes a new lookup after undoing removal of a searching track', async () => {
     const { result, pending, search } = setup();
     await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
-    const track = result.current.workspace.tracks[0]!;
+    const track = activePlaylist(result.current.workspace).tracks[0]!;
     act(() => result.current.dispatch({ type: 'delete', ids: [track.id] }));
     expect(pending[0]?.signal?.aborted).toBe(true);
-    act(() => result.current.dispatch({ type: 'restore', entries: [{ track, index: 0 }] }));
+    act(() => result.current.dispatch({ type: 'restore', entries: [{ track, index: 0, playlistId: result.current.workspace.activePlaylistId }] }));
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
     const candidate = recording();
     await act(async () => pending[1]!.resolve([candidate]));
-    await waitFor(() => expect(result.current.workspace.tracks[0]?.match).toMatchObject({
+    await waitFor(() => expect(activePlaylist(result.current.workspace).tracks[0]?.match).toMatchObject({
       phase: 'done', selectedId: candidate.id,
     }));
   });

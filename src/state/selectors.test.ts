@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import { describe, expect, it } from 'vitest';
-import type { Workspace } from '../types';
-import { emptyWorkspace, workspaceReducer, type WorkspaceAction } from './workspace';
+import type { Track, Workspace } from '../types';
+import { activePlaylist, emptyWorkspace, workspaceReducer, type WorkspaceAction } from './workspace';
 import { DEFAULT_VIEW, exportChecklistCsv, filterAndSort, matchClass, summarize } from './selectors';
 import { rankCandidates } from '../lib/matching/rank';
 import { recording } from '../test/fixtures';
@@ -17,8 +17,8 @@ function build(): Workspace {
       { artist: '=cmd', title: 'Injection' },
     ],
   });
-  const [a, b, c] = ws.tracks;
-  const resolve = (id: string, track: Workspace['tracks'][number], recs: ReturnType<typeof recording>[]): WorkspaceAction[] => [
+  const [a, b, c] = activePlaylist(ws).tracks;
+  const resolve = (id: string, track: Track, recs: ReturnType<typeof recording>[]): WorkspaceAction[] => [
     { type: 'matchStarted', id, signature: id },
     { type: 'matchResolved', id, signature: id, candidates: rankCandidates(track, recs), at: 1 },
   ];
@@ -35,8 +35,8 @@ function build(): Workspace {
 describe('summarize', () => {
   it('counts statuses and match classes', () => {
     const ws = build();
-    expect(ws.tracks.map(matchClass)).toEqual(['high', 'review', 'high', 'pending']);
-    expect(summarize(ws.tracks)).toMatchObject({
+    expect(activePlaylist(ws).tracks.map(matchClass)).toEqual(['high', 'review', 'high', 'pending']);
+    expect(summarize(activePlaylist(ws).tracks)).toMatchObject({
       total: 4,
       likely: 2,
       review: 1,
@@ -48,7 +48,7 @@ describe('summarize', () => {
   });
 
   it('only adds known prices and reports unpriced tracks separately', () => {
-    const summary = summarize(build().tracks);
+    const summary = summarize(activePlaylist(build()).tracks);
     expect(summary.remainingCost).toEqual([{ currency: 'USD', amount: 0.99, count: 1 }]);
     expect(summary.spentCost).toEqual([{ currency: 'USD', amount: 1.29, count: 1 }]);
     expect(summary.unpricedRemaining).toBe(2);
@@ -56,8 +56,8 @@ describe('summarize', () => {
 
   it('excludes skipped tracks from remaining cost', () => {
     let ws = build();
-    ws = workspaceReducer(ws, { type: 'setStatus', ids: [ws.tracks[1]!.id], status: 'skipped' });
-    const summary = summarize(ws.tracks);
+    ws = workspaceReducer(ws, { type: 'setStatus', ids: [activePlaylist(ws).tracks[1]!.id], status: 'skipped' });
+    const summary = summarize(activePlaylist(ws).tracks);
     expect(summary.remainingCost).toEqual([]);
     expect(summary.skipped).toBe(1);
     expect(summary.remaining).toBe(2);
@@ -66,7 +66,7 @@ describe('summarize', () => {
 
 describe('filterAndSort', () => {
   it('filters by status, match class, and text', () => {
-    const { tracks } = build();
+    const { tracks } = activePlaylist(build());
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, status: 'purchased' }).map((t) => t.artist)).toEqual(['The Weeknd']);
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, status: 'remaining' })).toHaveLength(3);
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, match: 'review' }).map((t) => t.artist)).toEqual(['Daft Punk']);
@@ -76,7 +76,7 @@ describe('filterAndSort', () => {
   });
 
   it('sorts by artist, attention needed, and price', () => {
-    const { tracks } = build();
+    const { tracks } = activePlaylist(build());
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, sort: 'artist' }).map((t) => t.artist)).toEqual(['=cmd', 'Avicii', 'Daft Punk', 'The Weeknd']);
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, sort: 'confidence' })[0]?.artist).toBe('Daft Punk');
     expect(filterAndSort(tracks, { ...DEFAULT_VIEW, sort: 'price' }).map((t) => t.artist)).toEqual(['Daft Punk', 'The Weeknd', 'Avicii', '=cmd']);
@@ -85,7 +85,7 @@ describe('filterAndSort', () => {
 
 describe('exportChecklistCsv', () => {
   it('exports a row per track with selected recording, price, status, and link', () => {
-    const csv = exportChecklistCsv(build().tracks);
+    const csv = exportChecklistCsv(activePlaylist(build()).tracks);
     const parsed = Papa.parse<Record<string, string>>(csv, { header: true }).data;
     expect(parsed).toHaveLength(4);
     expect(parsed[0]).toMatchObject({
@@ -103,7 +103,7 @@ describe('exportChecklistCsv', () => {
   });
 
   it('neutralizes spreadsheet formulas', () => {
-    const parsed = Papa.parse<Record<string, string>>(exportChecklistCsv(build().tracks), { header: true }).data;
+    const parsed = Papa.parse<Record<string, string>>(exportChecklistCsv(activePlaylist(build()).tracks), { header: true }).data;
     expect(parsed[3]?.Artist).toBe("'=cmd");
   });
 });
