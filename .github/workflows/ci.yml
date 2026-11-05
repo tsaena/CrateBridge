@@ -4,13 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Lets the site be redeployed from the Actions tab, e.g. after enabling Pages.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded PR runs are cancelled; runs on main finish so deployments aren't cut off.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -31,3 +34,24 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+      - name: Upload site for GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    # Requires Pages to be enabled with "GitHub Actions" as the source (Settings → Pages).
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
