@@ -22,6 +22,12 @@ Buying a playlist track by track means opening the playlist, searching the store
 - **Settings**: iTunes storefront (default US), clean/explicit preference, and extra words for external searches (Clean, Extended, Radio Edit, …).
 - **Saved locally**: the workspace is stored in your browser's `localStorage` and restored on reload. Corrupted or unreadable data is backed up and replaced with a fresh workspace instead of crashing the app.
 
+## Using it
+
+CrateBridge is deployed to GitHub Pages at **https://tsaena.github.io/CrateBridge/** after every merge to `main`. It works in any modern browser, with nothing to install.
+
+Each site keeps its own workspace in browser storage, so playlists built on `localhost` don't appear on the hosted site. Use *Export CSV* and the CSV import to move them.
+
 ## Running locally
 
 Requires Node.js 22 or newer.
@@ -46,7 +52,7 @@ npm run typecheck
 npm run lint
 ```
 
-GitHub Actions runs type checking, linting, tests, and a production build on every pull request and on pushes to `main`.
+GitHub Actions runs type checking, linting, tests, and a production build on every pull request and on pushes to `main`. On `main`, the same workflow then deploys the build to GitHub Pages. This needs Pages enabled once, with *GitHub Actions* as the source (Settings → Pages).
 
 ## Supported import formats
 
