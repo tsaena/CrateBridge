@@ -25,7 +25,7 @@ Buying a playlist track by track means opening the playlist, searching the store
 
 ## Using it
 
-CrateBridge is deployed to GitHub Pages at **https://tsaena.github.io/CrateBridge/** after every merge to `main`. It works in any modern browser, with nothing to install.
+CrateBridge is deployed to GitHub Pages at **https://tsaena.github.io/CrateBridge/** after every merge to `main`. Use a modern desktop browser, with nothing to install. iPhone support is currently deferred; see Known limitations.
 
 Each site keeps its own workspace in browser storage, so playlists built on `localhost` don't appear on the hosted site. Use *Export CSV* and the CSV import to move them.
 
@@ -104,6 +104,7 @@ src/
 
 ## Known limitations
 
+- **iPhone support is deferred** as of November 5, 2026. Catalog lookups have a known failure on iPhone Safari ([#4](https://github.com/tsaena/CrateBridge/issues/4)). iPhone-specific investigation, fixes, and store-link verification are deprioritized until the maintainer explicitly revisits them; they do not block desktop work or deployment.
 - Spotify and Apple Music playlist URLs can't be imported directly (that needs OAuth). Paste the tracklist text or use a CSV export.
 - Data lives only in this browser's `localStorage`. There is **no cloud backup or cross-device sync**, and clearing site data removes it. Use *Export CSV* to keep a copy.
 - Matching is heuristic. Unusual titles, classical works, and artists whose catalog credits differ a lot from the playlist may need a manual pick or a refined search.
