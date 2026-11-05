@@ -31,7 +31,7 @@ export function catalogQueries(track: Pick<Track, 'artist' | 'title' | 'searchOv
 }
 
 /** Identifies the inputs a match was computed from, so stale results can be discarded. */
-export function matchSignature(track: Pick<Track, 'artist' | 'title' | 'album' | 'durationMs' | 'isrc' | 'searchOverride'>, country: string): string {
+export function matchSignature(track: Pick<Track, 'artist' | 'title' | 'album' | 'durationMs' | 'isrc' | 'searchOverride' | 'explicit'>, country: string): string {
   return JSON.stringify([
     country.toUpperCase(),
     track.artist.trim(),
@@ -40,6 +40,7 @@ export function matchSignature(track: Pick<Track, 'artist' | 'title' | 'album' |
     track.durationMs ?? 0,
     track.isrc ?? '',
     track.searchOverride?.trim() ?? '',
+    track.explicit ?? null,
   ]);
 }
 

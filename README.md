@@ -10,7 +10,7 @@ Buying a playlist track by track means opening the playlist, searching the store
 
 ## What it does today
 
-- **Import** a pasted tracklist (hyphens, en/em dashes, tabs, numbered lists, DJ timestamps, Unicode), a CSV export, or tracks typed in by hand. Lines that can't be split confidently are held back for you to fix rather than guessed. A sample playlist is included.
+- **Import** from Spotify after sign-in, a pasted tracklist (hyphens, en/em dashes, tabs, numbered lists, DJ timestamps, Unicode), a CSV export, or tracks typed in by hand. Lines that can't be split confidently are held back for you to fix rather than guessed. A sample playlist is included.
 - **Match** each track against Apple's iTunes catalog through the official iTunes Search API, in the background and at a pace that respects Apple's rate limit.
 - **Rank versions** with a deterministic, explainable algorithm. Each track is classified as *High confidence*, *Review suggested*, or *No reliable match*, and every candidate shows the reasons for its rating.
 - **Compare and choose** among alternative recordings (album, duration, price, clean/explicit, remix/live/extended) inline, without modal dialogs.
@@ -38,7 +38,7 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-No accounts, API keys, or environment variables are needed.
+Paste, CSV, and manual import need no accounts, API keys, or environment variables. Spotify import uses optional Spotify sign-in and the public Client ID in `src/lib/spotify/client.ts`; it never uses a client secret.
 
 ```bash
 npm run build      # type-check and build to dist/
@@ -56,6 +56,12 @@ npm run lint
 GitHub Actions runs type checking, linting, tests, and a production build on every pull request and on pushes to `main`. On `main`, the same workflow then deploys the build to GitHub Pages. This needs Pages enabled once, with *GitHub Actions* as the source (Settings → Pages).
 
 ## Supported import formats
+
+**Spotify**: choose the Spotify import tab and connect your account. Load your playlists or paste a full Spotify playlist link, URI, or ID. Preview the tracks, then import into a new named playlist (the default) or append to the current one. Titles, artists, album, duration, ISRC, and the explicit-content flag are retained. A conflicting or unknown explicit-content flag on an iTunes candidate requires review; Spotify's non-explicit flag does not imply an edited clean version. Local files, unavailable tracks, episodes, and incomplete items are skipped with a count. Imported tracks link back to Spotify. Imports fetch pages sequentially and stop at 10,000 items; a failed page imports nothing.
+
+Spotify's current API permits reading playlist contents only when the signed-in user owns or collaborates on the playlist. Following someone else's or an editorial playlist is not sufficient; use CSV or paste instead. New development-mode apps require a Premium app owner and allow up to five allowlisted users. See [playlist access](https://developer.spotify.com/documentation/web-api/reference/get-playlists-items) and [development-mode access](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+
+The Spotify Developer app must allow these exact redirect URIs: `https://tsaena.github.io/CrateBridge/` for the hosted build and `http://127.0.0.1:5173/` locally. Open the local app using `127.0.0.1`, not `localhost`. The flow uses Authorization Code with PKCE and the read-only scopes `playlist-read-private` and `playlist-read-collaborative`. Tokens and pending sign-in state stay in this tab's `sessionStorage`, separately from saved workspaces; tokens refresh as needed. Disconnect clears the connection while keeping imported tracks. You can also revoke access through your Spotify account's Apps page. API access and rate limits can change; a 429 pauses further Spotify requests for the server's `Retry-After` interval.
 
 **Pasted text**: one track per line, `Artist - Title` by default (switchable to `Title - Artist`). Recognised separators are ` - `, ` – `, ` — `, tabs, unspaced en/em dashes, ` | `, and `Title by Artist`. Leading numbering (`1.`, `02)`, `#3`, `4 -`), bullets, DJ timestamps (`00:04:10`, `[1:02:33]`), and trailing durations (`(3:57)`) are stripped. Names like `50 Cent` and `Jay-Z` are left alone. Streaming links can't be resolved without signing in to the service, so they are flagged.
 
@@ -105,7 +111,7 @@ src/
 ## Known limitations
 
 - **iPhone support is deferred** as of November 5, 2026. Catalog lookups have a known failure on iPhone Safari ([#4](https://github.com/tsaena/CrateBridge/issues/4)). iPhone-specific investigation, fixes, and store-link verification are deprioritized until the maintainer explicitly revisits them; they do not block desktop work or deployment.
-- Spotify and Apple Music playlist URLs can't be imported directly (that needs OAuth). Paste the tracklist text or use a CSV export.
+- Apple Music playlist URLs can't be imported directly. Spotify links require connecting an allowed account and owning or collaborating on the playlist; otherwise paste the tracklist text or use a CSV export.
 - Data lives only in this browser's `localStorage`. There is **no cloud backup or cross-device sync**, and clearing site data removes it. Use *Export CSV* to keep a copy.
 - Matching is heuristic. Unusual titles, classical works, and artists whose catalog credits differ a lot from the playlist may need a manual pick or a refined search.
 - The JSONP fallback injects a script from `itunes.apple.com`. It is only used when a direct `fetch` fails.
@@ -114,7 +120,7 @@ src/
 
 Possible future work, roughly in priority order:
 
-- Spotify / Apple Music playlist import via their official APIs (OAuth)
+- Apple Music playlist import via its official API
 - More retailers through `CatalogProvider` (Beatport, Bandcamp, Amazon) and multi-store price comparison
 - Comparison with an existing Serato library, and detection of tracks already owned or purchased
 - Optional preview playback that complies with Apple's badge and attribution requirements

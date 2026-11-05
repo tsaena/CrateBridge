@@ -8,7 +8,7 @@ export const PURCHASE_STATUSES: readonly PurchaseStatus[] = [
   'skipped',
 ];
 
-export type TrackSource = 'paste' | 'csv' | 'manual' | 'sample';
+export type TrackSource = 'paste' | 'csv' | 'manual' | 'sample' | 'spotify';
 
 /**
  * Confidence classes derived from the deterministic ranking rules in
@@ -95,6 +95,10 @@ export interface MatchState {
 
 export interface Track {
   id: string;
+  /** Explicit-content flag supplied by the import source; false does not imply a clean edit. */
+  explicit?: boolean;
+  /** Attribution for metadata imported from Spotify. */
+  spotifyUrl?: string;
   artist: string;
   title: string;
   album?: string;
@@ -137,6 +141,8 @@ export interface Workspace {
 
 /** A track as produced by an importer, before it enters the workspace. */
 export interface TrackDraft {
+  explicit?: boolean;
+  spotifyUrl?: string;
   artist: string;
   title: string;
   album?: string;

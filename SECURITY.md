@@ -10,12 +10,14 @@ Only the latest code on `main` is supported. There are no versioned releases yet
 
 CrateBridge is a static, client-only web app.
 
-- **No backend, accounts, or secrets.** The repository contains no API keys or credentials, and none are needed to run it.
+- **No backend or CrateBridge accounts.** Paste, CSV, and manual import require no credentials. Optional Spotify import uses browser-only Authorization Code with PKCE and a public Client ID; there is no client secret. Spotify tokens and pending sign-in state are kept in this tab's `sessionStorage`, never in the saved workspace or `localStorage`.
 - **No payments.** Purchases happen on the retailer's own site or app. CrateBridge never sees payment details.
 - **Local data only.** Imported tracks, selections, statuses, and settings are stored in the browser's `localStorage`. Nothing is sent to a CrateBridge server, because there isn't one.
 - **Outbound traffic:**
   - catalog searches to `https://itunes.apple.com/search`
   - album artwork from Apple's `mzstatic.com` image hosts
+  - optional Spotify sign-in/token exchange at `https://accounts.spotify.com` and playlist metadata from `https://api.spotify.com/v1`
+  - Spotify attribution links at `https://open.spotify.com`; no Spotify audio or artwork is fetched
   - pages the user chooses to open: Apple, Amazon, Beatport, and Bandcamp listings and searches
 
 ### Untrusted input
@@ -24,6 +26,7 @@ The following data is untrusted and must be handled safely:
 
 - Pasted tracklists and uploaded CSV files
 - iTunes Search API responses, including titles, artist names, and URLs
+- Spotify metadata, pagination URLs, and OAuth callbacks
 - Data read back from `localStorage`, which may be stale, malformed, or edited by hand
 
 ### Invariants
@@ -38,6 +41,8 @@ Changes must keep these properties:
 6. **CSV export escaping.** Exported cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return are prefixed so spreadsheets don't run them as formulas.
 7. **Bounded imports.** CSV uploads are limited to 5 MB.
 8. **No new dependencies or third-party hosts** without review. Keep the dependency set small, and commit `package-lock.json`.
+9. **Bound Spotify authorization.** Verify the random OAuth state, PKCE verifier, Client ID, exact redirect URI, and a ten-minute pending-login lifetime before exchanging a code. Clear callback parameters before rendering. Refresh tokens go only to Spotify's fixed token endpoint. Disconnect must not allow an in-flight refresh to restore tokens.
+10. **Bound Spotify imports.** Build API URLs from validated playlist IDs. Validate pagination origin, resource path, and advancing offset before requesting another page, with a maximum of 200 pages. Attribution URLs must pass `safeSpotifyTrackUrl` on import and storage load. Do not import partial results after an API failure.
 
 ### Out of scope
 

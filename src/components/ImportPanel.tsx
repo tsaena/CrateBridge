@@ -5,21 +5,25 @@ import { parseTracklist, type LineOrder } from '../lib/import/parseTracklist';
 import { importCsv, type ColumnMapping, type CsvField } from '../lib/import/parseCsv';
 import { SAMPLE_PLAYLIST } from '../data/samplePlaylist';
 import { cx } from './cx';
+import { SpotifyImport } from './SpotifyImport';
+import { SpotifyMark } from './SpotifyLink';
+import { spotify } from '../lib/spotify/client';
 
-type Tab = 'paste' | 'csv' | 'manual';
+type Tab = 'paste' | 'csv' | 'manual' | 'spotify';
 
 interface Props {
-  onImport: (drafts: TrackDraft[], source: TrackSource) => void;
+  onImport: (drafts: TrackDraft[], source: TrackSource, playlistName?: string) => void;
   hasTracks: boolean;
 }
 
 export function ImportPanel({ onImport, hasTracks }: Props) {
-  const [tab, setTab] = useState<Tab>('paste');
-  const tabs: { id: Tab; label: string; Icon: typeof Upload }[] = [
+  const [tab, setTab] = useState<Tab>(spotify.returnedFromLogin ? 'spotify' : 'paste');
+  const tabs = [
     { id: 'paste', label: 'Paste tracklist', Icon: ClipboardPaste },
     { id: 'csv', label: 'Upload CSV', Icon: FileSpreadsheet },
     { id: 'manual', label: 'Add a track', Icon: Plus },
-  ];
+    { id: 'spotify', label: 'Spotify', Icon: SpotifyMark },
+  ] as const;
   const baseId = useId();
 
   return (
@@ -59,6 +63,7 @@ export function ImportPanel({ onImport, hasTracks }: Props) {
         {tab === 'paste' && <PasteImport onImport={(drafts) => onImport(drafts, 'paste')} />}
         {tab === 'csv' && <CsvImportForm onImport={(drafts) => onImport(drafts, 'csv')} />}
         {tab === 'manual' && <ManualAdd onImport={(drafts) => onImport(drafts, 'manual')} />}
+        {tab === 'spotify' && <SpotifyImport onImport={(drafts, name) => onImport(drafts, 'spotify', name)} />}
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import {
 import { Header } from './components/Header';
 import { PlaylistBar } from './components/PlaylistBar';
 import { ImportPanel } from './components/ImportPanel';
+import { spotify } from './lib/spotify/client';
 import { SummaryBar } from './components/SummaryBar';
 import { Toolbar } from './components/Toolbar';
 import { TrackRow, type TrackRowHandlers } from './components/TrackRow';
@@ -46,7 +47,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
   const [view, setView] = useState<ViewOptions>(DEFAULT_VIEW);
   const [activeId, setActiveId] = useState<string>();
   const [expandedId, setExpandedId] = useState<string>();
-  const [importOpen, setImportOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(spotify.returnedFromLogin);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [toast, setToast] = useState<ToastMessage>();
@@ -247,9 +248,15 @@ export default function App({ service: injectedService, storage }: AppProps) {
 
   // --- Workspace actions ---------------------------------------------------
 
-  const importDrafts = (drafts: TrackDraft[], source: TrackSource) => {
+  const importDrafts = (drafts: TrackDraft[], source: TrackSource, playlistName?: string) => {
     const count = drafts.filter((d) => d.title.trim() || d.artist.trim()).length;
     if (count === 0) return;
+    if (playlistName) {
+      dispatch({ type: 'createPlaylist', name: playlistName });
+      setView(DEFAULT_VIEW);
+      setActiveId(undefined);
+      setExpandedId(undefined);
+    }
     dispatch({ type: 'import', drafts, source });
     setImportOpen(false);
     showToast({ text: `Imported ${count} ${count === 1 ? 'track' : 'tracks'}. Matching against the iTunes catalog…` });
@@ -498,7 +505,7 @@ function scrollToTrack(id: string) {
   });
 }
 
-function EmptyState({ onImport }: { onImport: (drafts: TrackDraft[], source: TrackSource) => void }) {
+function EmptyState({ onImport }: { onImport: (drafts: TrackDraft[], source: TrackSource, playlistName?: string) => void }) {
   const steps = [
     ['Import', 'Paste a tracklist or upload a playlist CSV.'],
     ['Review', 'CrateBridge finds matching recordings in the iTunes Store and flags anything uncertain.'],
@@ -509,7 +516,7 @@ function EmptyState({ onImport }: { onImport: (drafts: TrackDraft[], source: Tra
       <div className="panel p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-ink-100">Start a purchase list</h2>
         <p className="mt-1 mb-5 text-sm text-ink-400">
-          Turn a streaming playlist into a checklist of tracks to buy and own — no accounts, no sign-in.
+          Turn a streaming playlist into a checklist of tracks to buy and own. Paste or upload without an account, or connect Spotify to import.
         </p>
         <ImportPanel onImport={onImport} hasTracks={false} />
       </div>
