@@ -11,6 +11,7 @@ import type {
 } from '../types';
 import { rankCandidates } from '../lib/matching/rank';
 import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
+import { safeSpotifyTrackUrl } from '../lib/spotify/import';
 
 export const DEFAULT_SETTINGS: WorkspaceSettings = {
   country: 'US',
@@ -77,6 +78,8 @@ export function createId(prefix = 't'): string {
 export function draftToTrack(draft: TrackDraft, source: TrackSource, now = Date.now()): Track {
   return {
     id: createId(),
+    spotifyUrl: safeSpotifyTrackUrl(draft.spotifyUrl),
+    explicit: draft.explicit,
     artist: draft.artist.trim(),
     title: draft.title.trim(),
     album: draft.album?.trim() || undefined,

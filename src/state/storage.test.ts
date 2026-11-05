@@ -39,6 +39,20 @@ function sampleWorkspace() {
 }
 
 describe('workspace persistence', () => {
+  it('restores Spotify provenance and rejects unsafe attribution URLs without changing older saves', () => {
+    const storage = memoryStorage();
+    const url = 'https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b';
+    const ws = workspaceReducer(emptyWorkspace(), {
+      type: 'import', source: 'spotify', drafts: [{ artist: 'The Weeknd', title: 'Blinding Lights', spotifyUrl: url, explicit: false }],
+    });
+    saveWorkspace(ws, storage);
+    expect(activePlaylist(loadWorkspace(storage).workspace).tracks[0]).toMatchObject({ source: 'spotify', spotifyUrl: url, explicit: false });
+    const raw = JSON.parse(storage.data[STORAGE_KEY]!);
+    raw.workspace.playlists[0].tracks[0].spotifyUrl = 'javascript:alert(1)';
+    storage.data[STORAGE_KEY] = JSON.stringify(raw);
+    expect(activePlaylist(loadWorkspace(storage).workspace).tracks[0]?.spotifyUrl).toBeUndefined();
+  });
+
   it('starts empty when nothing is stored', () => {
     expect(loadWorkspace(memoryStorage()).kind).toBe('empty');
     expect(loadWorkspace(undefined).kind).toBe('empty');

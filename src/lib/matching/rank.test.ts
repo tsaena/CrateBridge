@@ -40,6 +40,21 @@ describe('normalization', () => {
 });
 
 describe('rankCandidates', () => {
+  it('requires agreement with imported explicit metadata for high confidence', () => {
+    const explicit = recording({ explicitness: 'explicit' });
+    const clean = recording({ explicitness: 'clean' });
+    const original = recording({ explicitness: 'not_explicit' });
+    const unknown = recording({ explicitness: 'unknown' });
+    expect(scoreCandidate({ ...request, explicit: true }, explicit).confidence).toBe('high');
+    expect(scoreCandidate({ ...request, explicit: true }, clean).confidence).toBe('review');
+    expect(scoreCandidate({ ...request, explicit: true }, unknown).confidence).toBe('review');
+    expect(scoreCandidate({ ...request, explicit: false }, explicit).confidence).toBe('review');
+    // Spotify false does not say whether a recording is an edited clean version.
+    expect(scoreCandidate({ ...request, explicit: false }, original).confidence).toBe('high');
+    expect(scoreCandidate({ ...request, explicit: false }, clean).confidence).toBe('high');
+    expect(scoreCandidate({ ...request, explicit: false }, explicit).reasons.map((r) => r.text)).toContain('Explicit-content flag differs from the imported track');
+  });
+
   it('rates an exact artist and title match as high confidence', () => {
     const [top] = rankCandidates(request, [recording()]);
     expect(top?.confidence).toBe('high');

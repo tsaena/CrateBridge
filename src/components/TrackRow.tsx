@@ -11,6 +11,7 @@ import { SearchMenu } from './SearchLinks';
 import { StatusControl } from './StatusControl';
 import { TrackDetails } from './TrackDetails';
 import { cx } from './cx';
+import { SpotifyLink } from './SpotifyLink';
 
 export interface TrackRowHandlers {
   onActivate: (id: string) => void;
@@ -63,6 +64,7 @@ export const TrackRow = memo(function TrackRow(props: Props) {
             {track.title || <em className="text-review-300">Missing title</em>}
           </p>
           <p className="truncate text-sm text-ink-300">{track.artist || <em className="text-review-300">Missing artist</em>}</p>
+          {track.spotifyUrl && <SpotifyLink href={track.spotifyUrl} />}
           {(track.parseWarning || duplicate || alternateVersion) && (
             <div className="mt-1 flex flex-wrap gap-1">
               {track.parseWarning && (

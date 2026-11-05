@@ -7,6 +7,9 @@ import { CatalogError, type CatalogProvider } from './lib/providers/types';
 import { STORAGE_KEY } from './state/storage';
 import type { CatalogRecording } from './types';
 import { recording } from './test/fixtures';
+import { spotify } from './lib/spotify/client';
+import { SPOTIFY_PLAYLIST_ID, SPOTIFY_TRACK_ID, spotifyTrackFixture } from './test/spotify';
+import { readPlaylistItems } from './lib/spotify/import';
 
 const CATALOG: Record<string, CatalogRecording[]> = {
   'The Weeknd Blinding Lights': [
@@ -45,6 +48,35 @@ const row = (title: string) => {
 };
 
 describe('App', () => {
+  it('previews Spotify metadata before creating a named playlist and keeps existing work', async () => {
+    const connected = vi.spyOn(spotify, 'connected', 'get').mockReturnValue(true);
+    const playlist = { id: SPOTIFY_PLAYLIST_ID, name: 'Friday set', url: `https://open.spotify.com/playlist/${SPOTIFY_PLAYLIST_ID}`, total: 1 };
+    const list = vi.spyOn(spotify, 'playlists').mockResolvedValue({ playlists: [playlist], nextOffset: undefined });
+    const detail = vi.spyOn(spotify, 'playlist').mockResolvedValue(playlist);
+    const tracks = vi.spyOn(spotify, 'tracks').mockResolvedValue(readPlaylistItems([{ item: spotifyTrackFixture }]));
+    try {
+      const { user } = setup();
+      await pasteAndImport(user, 'Daft Punk - One More Time');
+      await user.click(screen.getByRole('button', { name: 'Add more tracks' }));
+      await user.click(screen.getByRole('tab', { name: 'Spotify' }));
+      await user.click(screen.getByRole('button', { name: 'Load my playlists' }));
+      await user.click(await screen.findByRole('button', { name: 'Preview Friday set' }));
+      await screen.findByRole('region', { name: 'Spotify import preview' });
+      expect(screen.queryByRole('option', { name: /Friday set/ })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Import 1 track' }));
+      expect(screen.getByLabelText('Current playlist')).toHaveDisplayValue('Friday set (1 track)');
+      expect(within(row('Blinding Lights')).getByRole('link', { name: 'Open in Spotify' })).toHaveAttribute('href', `https://open.spotify.com/track/${SPOTIFY_TRACK_ID}`);
+      await waitFor(() => expect(localStorage.getItem(STORAGE_KEY)).toContain('"source":"spotify"'));
+      const stored = localStorage.getItem(STORAGE_KEY)!;
+      expect(stored).toContain('USUG11904206');
+      expect(stored).not.toContain('accessToken');
+      await user.selectOptions(screen.getByLabelText('Current playlist'), 'My playlist (1 track)');
+      expect(row('One More Time')).toBeInTheDocument();
+    } finally {
+      connected.mockRestore(); list.mockRestore(); detail.mockRestore(); tracks.mockRestore();
+    }
+  });
+
   it('imports a pasted tracklist and links each match to its verified store listing', async () => {
     const { user, search } = setup();
     expect(screen.getByRole('heading', { name: 'Start a purchase list' })).toBeInTheDocument();

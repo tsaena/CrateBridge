@@ -21,6 +21,7 @@ import {
 import { itunesStoreUrl, safeAppleUrl } from '../lib/providers/itunes';
 import { rankCandidates, type MatchRequest } from '../lib/matching/rank';
 import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
+import { safeSpotifyTrackUrl } from '../lib/spotify/import';
 
 export const STORAGE_KEY = 'cratebridge:workspace';
 export const BACKUP_KEY = 'cratebridge:workspace:backup';
@@ -155,7 +156,7 @@ const str = (value: unknown): string | undefined => (typeof value === 'string' ?
 const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
-const SOURCES: TrackSource[] = ['paste', 'csv', 'manual', 'sample'];
+const SOURCES: TrackSource[] = ['paste', 'csv', 'manual', 'sample', 'spotify'];
 
 export function sanitizeWorkspace(value: Record<string, unknown>): { workspace: Workspace; dropped: number } {
   const settings = sanitizeSettings(value.settings);
@@ -221,10 +222,14 @@ function sanitizeTrack(value: unknown, preference: ExplicitPreference): Track | 
   if (!id || (!artist && !title)) return undefined;
   const status = PURCHASE_STATUSES.includes(value.status as PurchaseStatus) ? (value.status as PurchaseStatus) : 'not_started';
   const source = SOURCES.includes(value.source as TrackSource) ? (value.source as TrackSource) : 'manual';
-  const request: MatchRequest = { artist, title, album: str(value.album), durationMs: num(value.durationMs), isrc: str(value.isrc) };
+  const request: MatchRequest = {
+    artist, title, album: str(value.album), durationMs: num(value.durationMs), isrc: str(value.isrc),
+    explicit: typeof value.explicit === 'boolean' ? value.explicit : undefined,
+  };
   return {
     id,
     ...request,
+    spotifyUrl: safeSpotifyTrackUrl(value.spotifyUrl),
     source,
     status,
     addedAt: num(value.addedAt) ?? 0,

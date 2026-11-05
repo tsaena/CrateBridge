@@ -20,6 +20,7 @@ import {
 export interface MatchRequest {
   artist: string;
   title: string;
+  explicit?: boolean;
   album?: string;
   durationMs?: number;
   isrc?: string;
@@ -155,6 +156,18 @@ export function scoreCandidate(
   const versionConflict = scoreVersions(recording, want.tags, gotVersionTags(recording, got.tags), want.qualifierTokens, got.qualifierTokens, add);
 
   // Clean / explicit
+  let sourceExplicitnessUnverified = false;
+  if (request.explicit !== undefined) {
+    if (recording.explicitness === 'unknown') {
+      sourceExplicitnessUnverified = true;
+      add(0, 'Cannot verify the imported track’s explicit-content flag');
+    } else if (request.explicit !== (recording.explicitness === 'explicit')) {
+      sourceExplicitnessUnverified = true;
+      add(WEIGHTS.explicitConflict, 'Explicit-content flag differs from the imported track');
+    } else {
+      add(WEIGHTS.explicitPreferred, 'Explicit-content flag matches the imported track');
+    }
+  }
   const effectivePreference: ExplicitPreference = want.tags.includes('clean')
     ? 'clean'
     : want.tags.includes('explicit')
@@ -206,7 +219,7 @@ export function scoreCandidate(
   else add(WEIGHTS.notPurchasable, 'No individual track price (may be album-only or unavailable)');
 
   let confidence: Confidence;
-  if (isrcMatch || (titleExact && artistOk && !versionConflict && !durationFar)) confidence = 'high';
+  if (!sourceExplicitnessUnverified && (isrcMatch || (titleExact && artistOk && !versionConflict && !durationFar))) confidence = 'high';
   else if (titleOk && (artistOk || !wantPrimary || score >= 40)) confidence = 'review';
   else confidence = 'none';
 
