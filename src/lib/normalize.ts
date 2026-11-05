@@ -144,6 +144,19 @@ export function detectVersionTags(text: string): VersionTag[] {
   return [...found];
 }
 
+// Words that describe a release format rather than who made the version.
+const FORMAT_WORDS = new Set([
+  'radio', 'edit', 'mix', 'dub', 'version', 'extended', 'club', 'original', 'single', 'album', 'main',
+  'mono', 'stereo', 'short', 'long', 'full', 'length', 'clean', 'explicit', 'dirty', 'vocal', 'inch',
+  'remaster', 'remastered', 'the', 'a', 'an', 'and', 'of',
+]);
+const EDIT_FORMAT_TAGS: ReadonlySet<VersionTag> = new Set(['radio_edit', 'extended']);
+
+/** True when a qualifier names a remixer or editor, e.g. "Glam As You Club Mix". */
+function namesSomeone(normalizedQualifier: string): boolean {
+  return tokens(normalizedQualifier).some((t) => !FORMAT_WORDS.has(t) && !/^\d+$/.test(t));
+}
+
 // Qualifiers that describe the standard release rather than a different recording.
 const STANDARD_RELEASE = /\b(?:album|original|main|mono|stereo|single|lp)\b/;
 
@@ -157,13 +170,17 @@ const STANDARD_RELEASE = /\b(?:album|original|main|mono|stereo|single|lp)\b/;
  */
 function qualifierTags(qualifier: string): VersionTag[] {
   const tags = detectVersionTags(qualifier);
-  // Anything the named rules recognize ("Clean Edit", "Remastered Version") is already classified.
-  if (tags.length > 0) return tags;
   const lower = normalizeText(qualifier);
+  if (tags.length > 0) {
+    // A radio or club edit that names someone ("Cazzette's NYC Mode Radio Mix")
+    // is an edit of their remix, not of the original.
+    if (tags.every((t) => EDIT_FORMAT_TAGS.has(t)) && namesSomeone(lower)) return [...tags, 'remix'];
+    // Otherwise the named rules have classified it ("Clean Edit", "Remastered Version").
+    return tags;
+  }
   if (STANDARD_RELEASE.test(lower)) return tags;
   if (/\b(?:mix|edit|dub)\b/.test(lower)) {
-    const named = tokens(lower).some((t) => !/^(?:mix|edit|dub)$/.test(t));
-    if (named) return ['remix'];
+    if (namesSomeone(lower)) return ['remix'];
     return /\bedit\b/.test(lower) ? ['edit'] : ['alt_version'];
   }
   if (/\bversion\b/.test(lower)) return [...tags, 'alt_version'];

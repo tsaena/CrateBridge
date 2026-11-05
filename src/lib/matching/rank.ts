@@ -59,6 +59,7 @@ export const WEIGHTS = {
   isrcMismatch: -20,
   purchasable: 4,
   notPurchasable: -6,
+  compilation: -3,
 } as const;
 
 /** Versions that replace the performance entirely (not the artist's recording). */
@@ -66,6 +67,9 @@ const SUBSTITUTE_TAGS: ReadonlySet<VersionTag> = new Set(['karaoke', 'cover', 'i
 /** Edits of the same performance; a smaller penalty when unrequested. */
 const EDIT_TAGS: ReadonlySet<VersionTag> = new Set(['extended', 'radio_edit', 'edit']);
 
+// Album names that usually mean a hits collection or a themed compilation.
+const COMPILATION_ALBUM =
+  /\b(?:greatest hits|hits|best of|the very best|essentials?|anthology|collection|number ones|gold|party|workout|now that'?s what i call)\b/i;
 const LIVE_ALBUM = /\blive (?:at|in|from|on)\b|\blive$|^live\b|\bunplugged\b|\bin concert\b/;
 const SUBSTITUTE_CONTEXT = /\bkaraoke\b|\btribute\b|\bin the style of\b|\bmade famous by\b|\boriginally performed\b|\bcover (?:version|band)s?\b|\bsound ?alike\b/;
 
@@ -78,12 +82,9 @@ export function rankCandidates(
   const unique = recordings.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
   return unique
     .map((recording) => scoreCandidate(request, recording, preference))
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        Number(isPurchasable(b.recording)) - Number(isPurchasable(a.recording)) ||
-        (a.recording.releaseDate ?? '9999').localeCompare(b.recording.releaseDate ?? '9999'),
-    );
+    // Ties keep the catalog's own relevance order. Release dates aren't used:
+    // Apple reports compilations with the original song's date, or older.
+    .sort((a, b) => b.score - a.score || Number(isPurchasable(b.recording)) - Number(isPurchasable(a.recording)));
 }
 
 export function isPurchasable(recording: CatalogRecording): boolean {
@@ -271,7 +272,9 @@ function scoreVersions(
   }
 
   if (gotTags.includes('remaster') && !wantTags.includes('remaster')) add(0, 'Remastered release');
-  if (recording.album && /\b(?:greatest hits|best of|hits)\b/i.test(recording.album)) add(0, 'From a compilation');
+  if (recording.compilation || (recording.album && COMPILATION_ALBUM.test(recording.album))) {
+    add(WEIGHTS.compilation, 'From a compilation (the original album is preferred)');
+  }
 
   return conflict;
 }

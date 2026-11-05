@@ -20,6 +20,8 @@ export interface ItunesResult {
   trackCensoredName?: string;
   artistName?: string;
   collectionName?: string;
+  /** Present when the album artist differs from the track's, e.g. "Various Artists". */
+  collectionArtistName?: string;
   artworkUrl100?: string;
   artworkUrl60?: string;
   trackTimeMillis?: number;
@@ -56,10 +58,17 @@ export function buildSearchUrl({ term, country, limit = 25 }: CatalogQuery): str
   return `${ITUNES_SEARCH_ENDPOINT}?${params.toString()}`;
 }
 
+/** Consecutive fetch failures rescued by JSONP before the session switches to JSONP. */
+export const JSONP_SWITCH_AFTER = 2;
+
 export function createItunesProvider(options: ItunesProviderOptions = {}): CatalogProvider {
   const timeoutMs = options.timeoutMs ?? 15_000;
   const jsonp = options.jsonp === undefined ? loadJsonp : options.jsonp;
-  // After the first CORS-style failure, go straight to JSONP for the rest of the session.
+  // Apple's responses, including 403 rate limits, carry CORS headers, so fetch
+  // normally works and shows real status codes. Only switch to JSONP for the
+  // rest of the session after fetch has failed repeatedly while JSONP worked,
+  // so one network blip doesn't hide status codes from then on.
+  let jsonpRescues = 0;
   let preferJsonp = false;
 
   async function viaFetch(url: string, signal?: AbortSignal): Promise<unknown> {
@@ -102,11 +111,13 @@ export function createItunesProvider(options: ItunesProviderOptions = {}): Catal
       } else {
         try {
           payload = await viaFetch(url, signal);
+          jsonpRescues = 0;
         } catch (error) {
           // A TypeError from fetch is indistinguishable from a CORS block; JSONP is Apple's documented alternative.
           if (!(error instanceof CatalogError) || error.kind !== 'network' || !jsonp || signal?.aborted) throw error;
           payload = await viaJsonp(jsonp, url, timeoutMs);
-          preferJsonp = true;
+          jsonpRescues += 1;
+          if (jsonpRescues >= JSONP_SWITCH_AFTER) preferJsonp = true;
         }
       }
       if (signal?.aborted) throw new CatalogError('aborted', 'Search cancelled.');
@@ -157,6 +168,7 @@ function toRecording(item: ItunesResult): CatalogRecording | undefined {
     currency: item.currency || undefined,
     listingUrl: itunesStoreUrl(item.trackViewUrl),
     releaseDate: item.releaseDate || undefined,
+    compilation: /^various artists$/i.test(item.collectionArtistName ?? '') || undefined,
     genre: item.primaryGenreName || undefined,
   };
 }

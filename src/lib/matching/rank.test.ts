@@ -27,6 +27,11 @@ describe('normalization', () => {
     expect(analyzeTitle("Shake It Off (Taylor's Version)").tags).toEqual(['alt_version']);
     // Without a producer name there is no remixer to compare, so these aren't remixes.
     expect(analyzeTitle('Blinding Lights (Edit)').tags).toEqual(['edit']);
+    // Radio and club edits that name someone are edits of their remix.
+    expect(analyzeTitle('Poker Face (Glam As You Radio Mix)').tags).toEqual(['radio_edit', 'remix']);
+    expect(analyzeTitle('Poker Face (Glam As You Club Mix)').tags).toEqual(['extended', 'remix']);
+    expect(analyzeTitle('Levels (Original Radio Edit)').tags).toEqual(['radio_edit']);
+    expect(analyzeTitle('Hypnotized (12 Inch Mix)').tags).toEqual(['extended']);
     expect(analyzeTitle('Blinding Lights (Dub)').tags).toEqual(['alt_version']);
     // Standard-release wording is not a different recording.
     expect(analyzeTitle('Yeah! (Album Version)').tags).toEqual([]);
@@ -88,6 +93,16 @@ describe('rankCandidates', () => {
     expect(ranked[0]?.recording.id).toBe(studio.id);
     expect(ranked.find((c) => c.recording.id === live.id)?.confidence).toBe('review');
     expect(ranked.find((c) => c.recording.id === remix.id)?.confidence).toBe('review');
+  });
+
+  it('does not mistake a radio edit of a remix for the requested radio edit', () => {
+    // Live result for "Avicii – Levels (Radio Edit)" that previously won at High confidence.
+    const want = { artist: 'Avicii', title: 'Levels (Radio Edit)' };
+    const remixEdit = recording({ artist: 'Avicii', title: "Levels (feat. Cazzette) [Cazzette's NYC Mode Radio Mix]" });
+    const radioEdit = recording({ artist: 'Avicii', title: 'Levels (Radio Edit)' });
+    const ranked = rankCandidates(want, [remixEdit, radioEdit]);
+    expect(ranked[0]?.recording.id).toBe(radioEdit.id);
+    expect(ranked[1]?.confidence).toBe('review');
   });
 
   it('does not treat a producer-named edit as the requested original', () => {
@@ -175,15 +190,28 @@ describe('rankCandidates', () => {
     expect(scoreCandidate(request, clean, 'clean').confidence).toBe('high');
   });
 
-  it('orders alternatives deterministically by score, purchasability, then release date', () => {
-    const later = recording({ releaseDate: '2021-01-01T00:00:00Z' });
-    const earlier = recording({ releaseDate: '2019-11-29T00:00:00Z' });
-    const albumOnly = recording({ price: undefined, releaseDate: '2018-01-01T00:00:00Z' });
-    const ranked = rankCandidates(request, [later, albumOnly, earlier]);
-    expect(ranked.map((c) => c.recording.id)).toEqual([earlier.id, later.id, albumOnly.id]);
-    expect(rankCandidates(request, [earlier, later, albumOnly]).map((c) => c.recording.id)).toEqual(
-      ranked.map((c) => c.recording.id),
-    );
+  it('orders ties by purchasability, then the catalog order, ignoring release dates', () => {
+    // Apple reports some compilations with very old release dates.
+    const first = recording({ releaseDate: '2021-01-01T00:00:00Z' });
+    const second = recording({ releaseDate: '1966-01-01T00:00:00Z' });
+    const albumOnly = recording({ price: undefined });
+    expect(rankCandidates(request, [albumOnly, first, second]).map((c) => c.recording.id)).toEqual([first.id, second.id, albumOnly.id]);
+  });
+
+  it('prefers the original album over compilations of the same recording', () => {
+    // From live results for "Mr. Brightside" and "Billie Jean", where Apple lists compilations first.
+    const killers = { artist: 'The Killers', title: 'Mr. Brightside' };
+    const directHits = recording({ ...killers, album: 'Direct Hits' });
+    const hotFuss = recording({ ...killers, album: 'Hot Fuss' });
+    expect(rankCandidates(killers, [directHits, hotFuss])[0]?.recording.album).toBe('Hot Fuss');
+
+    const mj = { artist: 'Michael Jackson', title: 'Billie Jean' };
+    const variousArtists = recording({ ...mj, album: 'Pop Music: The Modern Era 1976-1999', compilation: true });
+    const thriller = recording({ ...mj, album: 'Thriller' });
+    const ranked = rankCandidates(mj, [variousArtists, thriller]);
+    expect(ranked[0]?.recording.album).toBe('Thriller');
+    // Same recording, so still a confident match.
+    expect(ranked[1]?.confidence).toBe('high');
   });
 
   it('rejects different songs and different artists', () => {
