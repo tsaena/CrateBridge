@@ -47,6 +47,7 @@ export const WEIGHTS = {
   unrequestedEdit: -12,
   remixerMatch: 8,
   remixerDifferent: -10,
+  versionWordingDifferent: -10,
   explicitPreferred: 6,
   explicitConflict: -10,
   cleanWhenAny: -4,
@@ -259,16 +260,20 @@ function scoreVersions(
     add(WEIGHTS.versionMatch, `Version matches (${wantHard.map((t) => VERSION_LABELS[t]).join(', ')})`);
   }
 
+  // Generic version words have already been removed, so the remaining
+  // qualifier words must agree in full: a shared first name doesn't identify a
+  // remixer, and "Short Edit" vs "Long Edit" share a tag but not a recording.
+  const sameWording =
+    wantQualifiers.every((t) => gotQualifiers.includes(t)) && gotQualifiers.every((t) => wantQualifiers.includes(t));
   if (wantHard.includes('remix') && gotHard.includes('remix') && wantQualifiers.length > 0) {
-    // A shared first name is not enough to identify a remixer. Generic version
-    // words have already been removed, so require both names to agree in full.
-    const sameRemixer = wantQualifiers.every((t) => gotQualifiers.includes(t)) &&
-      gotQualifiers.every((t) => wantQualifiers.includes(t));
-    if (sameRemixer) add(WEIGHTS.remixerMatch, 'Remixer matches');
+    if (sameWording) add(WEIGHTS.remixerMatch, 'Remixer matches');
     else if (gotQualifiers.length > 0) {
       conflict = true;
       add(WEIGHTS.remixerDifferent, 'Different remix');
     }
+  } else if (!wantHard.includes('remix') && wantHard.length > 0 && wantHard.every((t) => gotHard.includes(t)) && !sameWording) {
+    conflict = true;
+    add(WEIGHTS.versionWordingDifferent, 'Version wording differs');
   }
 
   if (gotTags.includes('remaster') && !wantTags.includes('remaster')) add(0, 'Remastered release');

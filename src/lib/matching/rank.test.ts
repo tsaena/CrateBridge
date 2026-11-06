@@ -105,6 +105,13 @@ describe('rankCandidates', () => {
     expect(ranked[1]?.confidence).toBe('review');
   });
 
+  it('keeps unnamed edits and mixes with different wording apart', () => {
+    for (const [want, other] of [['Song (Short Edit)', 'Song (Long Edit)'], ['Song (Vocal Mix)', 'Song (Dub)']]) {
+      expect(scoreCandidate({ artist: 'A', title: want }, recording({ artist: 'A', title: other })).confidence).toBe('review');
+      expect(scoreCandidate({ artist: 'A', title: want }, recording({ artist: 'A', title: want })).confidence).toBe('high');
+    }
+  });
+
   it('does not treat a producer-named edit as the requested original', () => {
     const edit = recording({ artist: 'Lady Gaga', title: 'Poker Face (Jody Den Broeder Edit)' });
     const original = recording({ artist: 'Lady Gaga', title: 'Poker Face' });
