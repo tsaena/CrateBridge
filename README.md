@@ -108,6 +108,22 @@ src/
 - Prices and availability depend on the selected storefront. Totals only include known prices, and mixed currencies are shown separately.
 - Audio previews are deliberately not included in the MVP to keep clear of Apple's promotional-content terms (previews must sit next to an official store badge and be credited to iTunes). Artwork is shown next to the listing link, and the footer credits iTunes.
 
+## Store and DJ pool access
+
+Checked on November 6, 2026 for #37. This records which providers a static, browser-only app can verify a listing from, without scraping, undocumented endpoints, a backend, or paid access. "Search link" means a labelled link the user clicks to the provider's own public search page; CrateBridge never fetches it.
+
+| Provider | Official access | Verdict for this app | What the app links to |
+| --- | --- | --- | --- |
+| iTunes Store | Public [Search API](https://performance-partners.apple.com/search-api), no key. Responses, including 403 rate limits, carry `Access-Control-Allow-Origin: *`. | **Integrated.** Verified listings when Apple reports an individual track price. | Exact listing with `app=itunes` |
+| Amazon Digital Music | The [Amazon Music developer portal](https://developer.amazon.com/docs/music/landing_home.html) says the Web API "is currently in a closed Beta". | **Blocked:** no public access. | Search link |
+| Bandcamp | The [developer page](https://bandcamp.com/developer) documents account, sales-report and merchandise APIs for artists and labels, with no catalog search. The page now sits behind a browser challenge, so this wasn't re-read on the check date. | **Blocked:** no catalog API. | Search link |
+| Beatport | The [API terms](https://support.beatport.com/hc/en-us/articles/4414997837716-Terms-and-Conditions) (section F) limit access to "pre-approved licensees" who must apply. Calls need an issued API key that may not be shared with third parties. Commercial use needs written approval, and purchases must link back to Beatport. | **Blocked:** needs approval, plus a server to keep the key private (#19). | Search link |
+| DJcity | Its help center has no API or integration articles. Tracks stay in the catalog [for about 6–12 months](https://support.djcity.com/hc/en-us/articles/34409938981140-I-can-t-find-a-track-that-used-to-be-on-DJcity-Where-did-the-missing-track-go). | **Blocked:** no public API, and the catalog is for members. | Site entry point |
+| BPM Supreme | Its help center has no API or integration articles. [Unified search](https://support.bpmsupreme.com/hc/en-us/articles/34639205317911-Updates-to-Search-on-BPM-Supreme) shows tracks from libraries outside your plan with "Upgrade to Unlock". | **Blocked:** no public API, and the catalog is for members. | Site entry point |
+| ZIPDJ | Couldn't be checked: the [site](https://www.zipdj.com/faqs) blocks automated reading, and no public API is known. | **Blocked / unverified.** | Site entry point |
+
+DJ pools get a link to their site rather than a search link, because no public, documented search URL was found and their catalogs need a membership. Opening a pool never shows availability or entitlement. #39 tracks what would unblock each provider.
+
 ## Known limitations
 
 - **iPhone support is deferred** as of November 5, 2026. Catalog lookups have a known failure on iPhone Safari ([#4](https://github.com/tsaena/CrateBridge/issues/4)). iPhone-specific investigation, fixes, and store-link verification are deprioritized until the maintainer explicitly revisits them; they do not block desktop work or deployment.
