@@ -47,6 +47,20 @@ describe('parseItunesResponse', () => {
     expect(unknown?.explicitness).toBe('unknown');
   });
 
+  it('flags various-artists compilations from collectionArtistName', () => {
+    const [compilation, ownAlbum, artistCompilation] = parseItunesResponse({
+      results: [
+        itunesResult({ collectionName: 'Pop Music: The Modern Era 1976-1999', collectionArtistName: 'Various Artists' }),
+        itunesResult({ collectionName: 'Thriller' }),
+        itunesResult({ collectionName: 'Number Ones', collectionArtistName: 'Michael Jackson' }),
+      ],
+    });
+    expect(compilation?.compilation).toBe(true);
+    expect(ownAlbum?.compilation).toBeUndefined();
+    // Only various-artists albums are flagged here; an artist's own hits album is detected by name in ranking.
+    expect(artistCompilation?.compilation).toBeUndefined();
+  });
+
   it('returns an empty list for empty results', () => {
     expect(parseItunesResponse({ resultCount: 0, results: [] })).toEqual([]);
   });
