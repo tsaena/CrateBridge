@@ -54,11 +54,20 @@ const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
 /** "Opened 2 hours ago": a reminder only, since opening a link never changes a track's status. */
 export function openedText(at: number | undefined, now: number): string | undefined {
+  return agoText('Opened', at, now);
+}
+
+/** "Checked 3 days ago": when the catalog lookup behind an evidence label ran. */
+export function checkedText(evidence: Evidence, now: number): string | undefined {
+  return agoText('Checked', evidence.checkedAt, now);
+}
+
+function agoText(verb: string, at: number | undefined, now: number): string | undefined {
   if (!at) return undefined;
-  // A link opened after `now` was taken (e.g. while the panel is open) reads as "this minute".
+  // A time after `now` was taken (e.g. while the panel is open) reads as "this minute".
   const minutes = Math.round(Math.max(0, now - at) / 60_000);
-  if (minutes < 60) return `Opened ${relative.format(-minutes, 'minute')}`;
+  if (minutes < 60) return `${verb} ${relative.format(-minutes, 'minute')}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `Opened ${relative.format(-hours, 'hour')}`;
-  return `Opened ${relative.format(-Math.round(hours / 24), 'day')}`;
+  if (hours < 48) return `${verb} ${relative.format(-hours, 'hour')}`;
+  return `${verb} ${relative.format(-Math.round(hours / 24), 'day')}`;
 }
