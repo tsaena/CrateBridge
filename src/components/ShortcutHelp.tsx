@@ -5,7 +5,7 @@ const SHORTCUTS: [string, string][] = [
   ['F', 'Mark found'],
   ['S', 'Skip and move on'],
   ['N', 'Reset to not started'],
-  ['V', 'Show or hide versions'],
+  ['V', 'Show or hide where to get it'],
   ['/', 'Filter tracks'],
   ['?', 'Toggle this help'],
 ];
