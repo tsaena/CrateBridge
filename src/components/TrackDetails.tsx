@@ -10,7 +10,7 @@ import { Artwork } from './Artwork';
 import { ListingLink } from './ListingLink';
 import { MatchBadge } from './MatchBadge';
 import { EvidenceBadge, OtherProviders, SearchElsewhere, SourceToggle } from './AcquisitionPanel';
-import { evidenceFor, openedText } from '../lib/acquisition/evidence';
+import { checkedText, evidenceFor, openedText } from '../lib/acquisition/evidence';
 import { providerById, type AcquisitionProviderId } from '../lib/acquisition/providers';
 import { cx } from './cx';
 
@@ -34,7 +34,8 @@ export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgai
   const [now] = useState(() => Date.now());
   const itunes = providerById('itunes');
   const onOpenListing = () => onOpen('itunes');
-  const itunesOpened = openedText(track.acquisition?.opened?.itunes, now);
+  const itunesEvidence = evidenceFor(track, itunes, now);
+  const itunesTimes = [checkedText(itunesEvidence, now), openedText(track.acquisition?.opened?.itunes, now)].filter(Boolean);
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 rounded-b-xl border-t border-ink-700/80 bg-ink-900/50 px-3 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -43,8 +44,8 @@ export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgai
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink-100">
             iTunes Store ({settings.country})
-            <EvidenceBadge evidence={evidenceFor(track, itunes, now)} />
-            {itunesOpened && <span className="text-xs text-ink-400">{itunesOpened}</span>}
+            <EvidenceBadge evidence={itunesEvidence} />
+            {itunesTimes.length > 0 && <span className="text-xs text-ink-400">{itunesTimes.join(' · ')}</span>}
           </p>
           <div className="flex flex-wrap items-center gap-1">
             <SourceToggle provider={itunes} chosen={track.acquisition?.source === 'itunes'} onChange={onSetSource} />

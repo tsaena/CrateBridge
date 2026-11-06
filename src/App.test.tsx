@@ -246,6 +246,7 @@ describe('App', () => {
     await within(row('Blinding Lights')).findByText('High confidence');
     await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
     expect(within(row('Blinding Lights')).getByText('Verified listing')).toBeInTheDocument();
+    expect(within(row('Blinding Lights')).getByText('Checked this minute')).toBeInTheDocument();
 
     const pools = within(row('Blinding Lights')).getByRole('region', { name: 'DJ pools' });
     const djcity = within(pools).getByRole('link', { name: /Open DJcity/ });
