@@ -9,7 +9,9 @@ import { selectedCandidate } from '../state/workspace';
 import { Artwork } from './Artwork';
 import { ListingLink } from './ListingLink';
 import { MatchBadge } from './MatchBadge';
-import { ExternalSearchList } from './SearchLinks';
+import { EvidenceBadge, OtherProviders, SearchElsewhere, SourceToggle } from './AcquisitionPanel';
+import { evidenceFor, openedText } from '../lib/acquisition/evidence';
+import { providerById, type AcquisitionProviderId } from '../lib/acquisition/providers';
 import { cx } from './cx';
 
 interface Props {
@@ -19,25 +21,40 @@ interface Props {
   onUpdate: (changes: Partial<Pick<Track, 'artist' | 'title' | 'album' | 'searchOverride'>>) => void;
   onSearchAgain: () => void;
   onDelete: () => void;
-  onOpenListing: () => void;
+  onOpen: (provider: AcquisitionProviderId) => void;
+  onSetSource: (source: AcquisitionProviderId | undefined) => void;
 }
 
-export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgain, onDelete, onOpenListing }: Props) {
+/** The track's acquisition panel: where to get this exact recording, and how sure CrateBridge is. */
+export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgain, onDelete, onOpen, onSetSource }: Props) {
   const selected = selectedCandidate(track);
   const { phase, candidates, error } = track.match;
   const label = `${track.artist} – ${track.title}`;
+  // Taken once when the panel opens; relative times don't need to tick.
+  const [now] = useState(() => Date.now());
+  const itunes = providerById('itunes');
+  const onOpenListing = () => onOpen('itunes');
+  const itunesOpened = openedText(track.acquisition?.opened?.itunes, now);
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-5 rounded-b-xl border-t border-ink-700/80 bg-ink-900/50 px-3 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section aria-label={`Catalog versions for ${label}`} className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold text-ink-100">Versions in the iTunes Store ({settings.country})</h3>
-          {phase === 'done' && track.match.searchedAt && (
-            <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={onSearchAgain}>
-              <RotateCcw aria-hidden className="size-3.5" />
-              Search again
-            </button>
-          )}
+      <section aria-label={`Where to get ${label}`} className="min-w-0">
+        <h3 className="mb-2 text-sm font-semibold text-ink-100">Store listings</h3>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="flex flex-wrap items-center gap-1.5 text-sm text-ink-100">
+            iTunes Store ({settings.country})
+            <EvidenceBadge evidence={evidenceFor(track, itunes, now)} />
+            {itunesOpened && <span className="text-xs text-ink-400">{itunesOpened}</span>}
+          </p>
+          <div className="flex flex-wrap items-center gap-1">
+            <SourceToggle provider={itunes} chosen={track.acquisition?.source === 'itunes'} onChange={onSetSource} />
+            {(phase === 'done' || phase === 'error') && (
+              <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={onSearchAgain}>
+                <RotateCcw aria-hidden className="size-3.5" />
+                Search again
+              </button>
+            )}
+          </div>
         </div>
 
         {(phase === 'queued' || phase === 'searching' || phase === 'idle') && (
@@ -54,7 +71,7 @@ export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgai
         {phase === 'error' && (
           <div className="rounded-lg border border-nomatch-400/30 bg-nomatch-400/5 px-3 py-3 text-sm">
             <p className="text-nomatch-400">{error ?? 'The catalog lookup failed.'}</p>
-            <p className="mt-1 text-ink-300">The search links on the right still work without the catalog.</p>
+            <p className="mt-1 text-ink-300">The other stores and pools below still work without the catalog.</p>
             <button type="button" className="btn btn-secondary mt-2 px-2.5 py-1.5 text-xs" onClick={onSearchAgain}>
               <RotateCcw aria-hidden className="size-3.5" />
               Retry lookup
@@ -91,17 +108,13 @@ export function TrackDetails({ track, settings, onSelect, onUpdate, onSearchAgai
             General if it’s hidden. Without Apple’s apps, the link falls back to Apple Music on the web, which doesn’t sell tracks.
           </span>
         </p>
+
+        <OtherProviders track={track} settings={settings} now={now} onOpen={onOpen} onSetSource={onSetSource} />
       </section>
 
       <aside className="grid min-w-0 content-start gap-5">
         <RefineSearch track={track} onSubmit={(searchOverride) => onUpdate({ searchOverride })} />
-        <section>
-          <h3 className="mb-1 text-sm font-semibold text-ink-100">Search other stores</h3>
-          {settings.searchModifiers.length > 0 && (
-            <p className="mb-1 text-xs text-ink-400">Adding: {settings.searchModifiers.join(', ')}</p>
-          )}
-          <ExternalSearchList track={track} country={settings.country} modifiers={settings.searchModifiers} />
-        </section>
+        <SearchElsewhere track={track} settings={settings} />
         <EditTrack track={track} onSave={onUpdate} onDelete={onDelete} />
       </aside>
     </div>

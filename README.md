@@ -15,12 +15,13 @@ Buying a playlist track by track means opening the playlist, searching the store
 - **Rank versions** with a deterministic, explainable algorithm. Each track is classified as *High confidence*, *Review suggested*, or *No reliable match*, and every candidate shows the reasons for its rating.
 - **Compare and choose** among alternative recordings (album, duration, price, clean/explicit, remix/live/extended) inline, without modal dialogs.
 - **Open the listing**: a green *iTunes listing* button with a verified badge and price goes to Apple's page for that exact recording. It only appears when Apple reports an individual track price. Listings with no track price are labelled as such, and nothing is ever labelled "Buy".
-- **Search elsewhere**: every track also has one-click searches on Amazon Digital Music, Beatport, and Bandcamp, plus Apple Music web search (labelled as a streaming catalog). These keep working when the iTunes API is unreachable.
+- **Where to get it**: each track's panel lists every store and DJ pool, labelled with what CrateBridge actually knows about each. Only the iTunes lookup can be *Verified listing* or *Possible match, review*; it also shows *Not found in this lookup*, *Unable to check* (with the reason), or *Checked over 30 days ago, refresh needed*. Amazon Digital Music, Beatport, and Bandcamp are *Search only, not checked* and open the store's own search. DJcity, BPM Supreme, and ZIPDJ are *Membership required, not checked* and open the pool's site. Apple Music web search sits apart, labelled as a streaming catalog. Everything except the iTunes lookup keeps working when the API is unreachable.
+- **Choose a source**: mark one store or pool as your source for a track. The row shows it, it's saved, and it's included in the CSV export. Each link also notes when you last opened it. Neither choosing a source nor opening a link changes the track's status.
 - **Track progress** with Not Started / Found / Purchased / Skipped statuses, a progress bar, counts, and a known-cost estimate (unknown prices are counted separately, never guessed). When you come back from a store tab, CrateBridge asks whether you bought the track; it never marks anything purchased on its own.
-- **Work quickly** with filters, search, sorting (including "needs attention first"), and keyboard shortcuts (`J`/`K` move, `O` open listing, `P` purchased, `S` skip, `F` found, `V` versions, `/` filter, `?` help).
+- **Work quickly** with filters, search, sorting (including "needs attention first"), and keyboard shortcuts (`J`/`K` move, `O` open listing, `P` purchased, `S` skip, `F` found, `V` where to get it, `/` filter, `?` help).
 - **Playlists**: keep separate named playlists, for example one per set, and switch between them. Each has its own tracks, picks, and statuses. Settings are shared, and lookups continue in the background for every playlist.
 - **Manage the list**: edit or remove tracks (with undo), detect duplicates (removal requires confirmation, and alternate versions are kept), and export the playlist's checklist as CSV.
-- **Settings**: iTunes storefront (default US), clean/explicit preference, and extra words for external searches (Clean, Extended, Radio Edit, …).
+- **Settings**: iTunes storefront (default US), clean/explicit preference, extra words for external searches (Clean, Extended, Radio Edit, …), and the DJ pools you use, which are listed first and marked *You use this*.
 - **Saved locally**: the workspace is stored in your browser's `localStorage` and restored on reload. Corrupted or unreadable data is backed up and replaced with a fresh workspace instead of crashing the app.
 
 ## Using it
@@ -84,6 +85,7 @@ src/
     providers/itunes.ts       iTunes Search API client (fetch, JSONP fallback)
     providers/searchLinks.ts  External store search URLs and storefronts
     catalog/                  Rate limiter, retries, and cache around a provider
+    acquisition/              Store and pool registry, evidence labels for each
   state/
     workspace.ts              Reducer: imports, edits, statuses, match results
     storage.ts                Versioned, validated localStorage persistence
@@ -95,7 +97,7 @@ src/
 - **Retailers** implement `CatalogProvider` (`search(query) → CatalogRecording[]`). Adding Beatport or Bandcamp means another provider plus a `provider` value on recordings, without changing the workspace or ranking.
 - **Matching** scores each candidate on title, primary and featured artists, version descriptors (remix, live, extended, radio edit, karaoke/cover, …), clean/explicit metadata and preference, duration, album, ISRC when available, and whether it is sold individually. The point values live in one table (`WEIGHTS`), each rule adds a human-readable reason, and the confidence class comes from explicit conditions (for example, *High* requires an exact title, a matching artist, no version conflict, and no large duration gap). Scores only order candidates and are never shown as probabilities.
 - **Requests** go through one queue that starts at most one request every 4 seconds, retries network and server errors with exponential backoff, pauses the entire queue for 30 seconds (then 60) after a rate-limit response (HTTP 403/429) or a failed JSONP request, which hides its status and may be a rate limit, caches results in memory, shares identical in-flight queries, and lets a track you're looking at jump the queue. Results are tagged with a signature of the query, so a response for a track that was since edited, re-queued, or deleted is discarded.
-- **Persistence** saves playlists, tracks, selections, statuses, and settings under a versioned key. Each track keeps up to 8 candidate recordings, enough to compare versions without re-querying. Match ratings and their reasons aren't stored: they are recomputed on load, which keeps storage small and keeps saved ratings in line with the current matching rules. Every field is validated on load, older saved workspaces are migrated, and lookups that were in flight are re-queued.
+- **Persistence** saves playlists, tracks, selections, statuses, chosen sources, opened-link times, and settings under a versioned key. Each track keeps up to 8 candidate recordings, enough to compare versions without re-querying. Match ratings and their reasons aren't stored: they are recomputed on load, which keeps storage small and keeps saved ratings in line with the current matching rules. Every field is validated on load, older saved workspaces are migrated, and lookups that were in flight are re-queued.
 
 ## iTunes Search API notes and limitations
 

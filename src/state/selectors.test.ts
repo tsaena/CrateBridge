@@ -27,6 +27,7 @@ function build(): Workspace {
     ...resolve(b!.id, b!, [recording({ artist: 'Daft Punk', title: 'One More Time (Live)', price: 0.99 })]),
     ...resolve(c!.id, c!, [recording({ artist: 'Avicii', title: 'Levels', price: undefined })]),
     { type: 'setStatus', ids: [a!.id], status: 'purchased' },
+    { type: 'setAcquisitionSource', id: a!.id, source: 'djcity' },
   ];
   ws = actions.reduce(workspaceReducer, ws);
   return ws;
@@ -97,9 +98,10 @@ describe('exportChecklistCsv', () => {
       Price: '1.29',
       Currency: 'USD',
       'Link Type': 'Verified iTunes Store listing',
+      'My Source': 'DJcity',
     });
     expect(parsed[0]?.['Store Link']).toMatch(/^https:\/\/music\.apple\.com\//);
-    expect(parsed[2]).toMatchObject({ Price: '', 'Link Type': 'Catalog listing (no individual price)' });
+    expect(parsed[2]).toMatchObject({ Price: '', 'Link Type': 'Catalog listing (no individual price)', 'My Source': '' });
   });
 
   it('neutralizes spreadsheet formulas', () => {

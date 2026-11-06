@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { AlertTriangle, ChevronDown, Copy, Layers } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Copy, Layers, Star } from 'lucide-react';
 import type { PurchaseStatus, Track, WorkspaceSettings } from '../types';
 import { formatDuration } from '../lib/normalize';
 import { listingKind, matchClass } from '../state/selectors';
@@ -7,7 +7,7 @@ import { selectedCandidate } from '../state/workspace';
 import { Artwork } from './Artwork';
 import { ListingLink } from './ListingLink';
 import { MatchBadge } from './MatchBadge';
-import { SearchMenu } from './SearchLinks';
+import { providerById, type AcquisitionProviderId } from '../lib/acquisition/providers';
 import { StatusControl } from './StatusControl';
 import { TrackDetails } from './TrackDetails';
 import { cx } from './cx';
@@ -21,7 +21,9 @@ export interface TrackRowHandlers {
   onUpdate: (id: string, changes: Partial<Pick<Track, 'artist' | 'title' | 'album' | 'searchOverride'>>) => void;
   onSearchAgain: (id: string) => void;
   onDelete: (id: string) => void;
-  onOpenListing: (id: string) => void;
+  /** A provider's link was opened. Never changes the track's status. */
+  onOpenProvider: (id: string, provider: AcquisitionProviderId) => void;
+  onSetSource: (id: string, source: AcquisitionProviderId | undefined) => void;
 }
 
 interface Props extends TrackRowHandlers {
@@ -65,8 +67,14 @@ export const TrackRow = memo(function TrackRow(props: Props) {
           </p>
           <p className="truncate text-sm text-ink-300">{track.artist || <em className="text-review-300">Missing artist</em>}</p>
           {track.spotifyUrl && <SpotifyLink href={track.spotifyUrl} />}
-          {(track.parseWarning || duplicate || alternateVersion) && (
+          {(track.parseWarning || duplicate || alternateVersion || track.acquisition?.source) && (
             <div className="mt-1 flex flex-wrap gap-1">
+              {track.acquisition?.source && (
+                <span className="chip border-cue-500/30 text-cue-300" title="The source you chose for this track">
+                  <Star aria-hidden className="size-3 fill-current" />
+                  Source: {providerById(track.acquisition.source).name}
+                </span>
+              )}
               {track.parseWarning && (
                 <span className="chip border-review-400/30 text-review-300" title={track.parseWarning}>
                   <AlertTriangle aria-hidden className="size-3" />
@@ -106,23 +114,15 @@ export const TrackRow = memo(function TrackRow(props: Props) {
               {recording.explicitness === 'clean' && <> · Clean</>}
             </p>
           ) : (
-            track.match.phase === 'done' && <p className="mt-1 text-xs text-ink-400">Use Search to look elsewhere.</p>
+            track.match.phase === 'done' && <p className="mt-1 text-xs text-ink-400">See other stores and pools under “Where to get it”.</p>
           )}
         </div>
 
         <div className="col-span-2 flex flex-wrap items-center gap-2 xl:col-span-1 xl:justify-end">
-          <ListingLink candidate={candidate} trackLabel={label} onOpen={() => props.onOpenListing(track.id)} />
+          <ListingLink candidate={candidate} trackLabel={label} onOpen={() => props.onOpenProvider(track.id, 'itunes')} />
           {kind === 'none' && track.match.phase === 'done' && (
             <span className="text-xs text-ink-400">No store listing found</span>
           )}
-          <SearchMenu
-            track={track}
-            country={settings.country}
-            modifiers={settings.searchModifiers}
-            onFindInCatalog={() => {
-              if (!expanded) props.onToggle(track.id);
-            }}
-          />
           <button
             type="button"
             className="btn btn-ghost px-2 py-1.5 text-xs"
@@ -133,7 +133,7 @@ export const TrackRow = memo(function TrackRow(props: Props) {
               props.onToggle(track.id);
             }}
           >
-            Versions
+            Where to get it
             {track.match.candidates.length > 0 && (
               <span className="rounded bg-ink-700 px-1 font-mono text-[10px] text-ink-200">{track.match.candidates.length}</span>
             )}
@@ -157,7 +157,8 @@ export const TrackRow = memo(function TrackRow(props: Props) {
             onUpdate={(changes) => props.onUpdate(track.id, changes)}
             onSearchAgain={() => props.onSearchAgain(track.id)}
             onDelete={() => props.onDelete(track.id)}
-            onOpenListing={() => props.onOpenListing(track.id)}
+            onOpen={(provider) => props.onOpenProvider(track.id, provider)}
+            onSetSource={(source) => props.onSetSource(track.id, source)}
           />
         </div>
       )}

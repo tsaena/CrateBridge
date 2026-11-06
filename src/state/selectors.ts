@@ -3,6 +3,7 @@ import type { PurchaseStatus, RankedCandidate, Track } from '../types';
 import { isPurchasable } from '../lib/matching/rank';
 import { formatDuration } from '../lib/normalize';
 import { selectedCandidate } from './workspace';
+import { providerById } from '../lib/acquisition/providers';
 
 /** How a track's catalog match should be presented. */
 export type MatchClass = 'pending' | 'error' | 'confirmed' | 'high' | 'review' | 'none';
@@ -210,6 +211,7 @@ export function exportChecklistCsv(tracks: Track[]): string {
       Currency: recording?.price !== undefined ? (recording.currency ?? '') : '',
       'Store Link': recording?.listingUrl ?? '',
       'Link Type': listingKindLabel(listingKind(candidate)),
+      'My Source': track.acquisition?.source ? providerById(track.acquisition.source).name : '',
     };
   });
   // Neutralize spreadsheet formula injection from user-entered or catalog text.

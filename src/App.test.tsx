@@ -94,11 +94,13 @@ describe('App', () => {
     // A listing without an individual price is clearly marked as unverified.
     await waitFor(() => expect(within(row('One More Time')).getByRole('link', { name: /no individual track price/ })).toBeInTheDocument());
 
-    // A poor result is labelled, and search links still work.
+    // A poor result is labelled, and the panel's other stores still work.
     await waitFor(() => expect(within(row('Yeah!')).getByText('No reliable match')).toBeInTheDocument());
-    await user.click(within(row('Yeah!')).getByRole('button', { name: /^Search$/ }));
-    const amazon = within(row('Yeah!')).getByRole('link', { name: /Amazon Digital Music/ });
+    await user.click(within(row('Yeah!')).getByRole('button', { name: /Where to get it/ }));
+    expect(within(row('Yeah!')).getByText('Possible match, review')).toBeInTheDocument();
+    const amazon = within(row('Yeah!')).getByRole('link', { name: /Search Amazon Digital Music/ });
     expect(amazon).toHaveAttribute('href', 'https://www.amazon.com/s?k=Usher%20Yeah!&i=digital-music');
+    expect(within(row('Yeah!')).getAllByText('Search only, not checked')).toHaveLength(3);
     expect(within(row('Yeah!')).getByText(/not an iTunes Store purchase page/)).toBeInTheDocument();
 
     // One request per track: the broader fallback query only runs when a search returns nothing.
@@ -140,7 +142,7 @@ describe('App', () => {
     await pasteAndImport(user, 'The Weeknd - Blinding Lights');
     await within(row('Blinding Lights')).findByText('High confidence');
 
-    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Versions/ }));
+    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
     const versions = within(row('Blinding Lights')).getByRole('list', { name: 'Candidate recordings' });
     expect(versions.children).toHaveLength(2);
     expect(within(versions).getByText('Live version (not requested)')).toBeInTheDocument();
@@ -157,7 +159,7 @@ describe('App', () => {
     const { user, search } = setup();
     await pasteAndImport(user, 'The Weeknd - Blinding Lights');
     await within(row('Blinding Lights')).findByText('High confidence');
-    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Versions/ }));
+    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
 
     const title = within(row('Blinding Lights')).getByLabelText('Title');
     await user.clear(title);
@@ -174,7 +176,7 @@ describe('App', () => {
   it('removes a track and can undo it', async () => {
     const { user } = setup();
     await pasteAndImport(user, 'The Weeknd - Blinding Lights\nDaft Punk - One More Time');
-    await user.click(within(row('One More Time')).getByRole('button', { name: /Versions/ }));
+    await user.click(within(row('One More Time')).getByRole('button', { name: /Where to get it/ }));
     await user.click(screen.getByRole('button', { name: 'Remove track' }));
     expect(screen.queryByText('One More Time', { selector: 'p' })).not.toBeInTheDocument();
 
@@ -196,8 +198,9 @@ describe('App', () => {
     const { user } = setup({ failing: true });
     await pasteAndImport(user, 'The Weeknd - Blinding Lights');
     await within(row('Blinding Lights')).findByText('Lookup failed');
-    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /^Search$/ }));
-    expect(within(row('Blinding Lights')).getByRole('link', { name: /Beatport/ })).toHaveAttribute(
+    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
+    expect(within(row('Blinding Lights')).getByText('Unable to check: Couldn’t reach Apple’s catalog.')).toBeInTheDocument();
+    expect(within(row('Blinding Lights')).getByRole('link', { name: /Search Beatport/ })).toHaveAttribute(
       'href',
       'https://www.beatport.com/search?q=The%20Weeknd%20Blinding%20Lights',
     );
@@ -235,6 +238,29 @@ describe('App', () => {
     expect(row('One More Time')).toHaveAttribute('aria-current', 'true');
     await user.keyboard('s');
     expect(within(row('One More Time')).getByRole('button', { name: /^Skipped/ })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('records the chosen source and opened links without changing the purchase status', async () => {
+    const { user, unmount } = setup();
+    await pasteAndImport(user, 'The Weeknd - Blinding Lights');
+    await within(row('Blinding Lights')).findByText('High confidence');
+    await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
+    expect(within(row('Blinding Lights')).getByText('Verified listing')).toBeInTheDocument();
+
+    const pools = within(row('Blinding Lights')).getByRole('region', { name: 'DJ pools' });
+    const djcity = within(pools).getByRole('link', { name: /Open DJcity/ });
+    expect(djcity).toHaveAttribute('href', 'https://www.djcity.com/');
+    djcity.addEventListener('click', (e) => e.preventDefault());
+    await user.click(djcity);
+    expect(within(pools).getByText(/Opened this minute/)).toBeInTheDocument();
+    await user.click(within(pools).getByRole('button', { name: /Use as my source \(DJcity\)/ }));
+    expect(within(row('Blinding Lights')).getByText('Source: DJcity')).toBeInTheDocument();
+    expect(within(row('Blinding Lights')).getByRole('button', { name: /^Not Started/ })).toHaveAttribute('aria-pressed', 'true');
+
+    await waitFor(() => expect(localStorage.getItem(STORAGE_KEY)).toContain('"source":"djcity"'));
+    unmount();
+    setup();
+    expect(within(row('Blinding Lights')).getByText('Source: DJcity')).toBeInTheDocument();
   });
 
   it('remembers which DJ pools the user uses', async () => {

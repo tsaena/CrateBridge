@@ -138,10 +138,14 @@ export default function App({ service: injectedService, storage }: AppProps) {
         const track = tracksRef.current.find((t) => t.id === id);
         removeTracks([id], `Removed “${track?.title ?? 'track'}”`);
       },
-      onOpenListing: (id) => {
+      onOpenProvider: (id, provider) => {
+        const at = Date.now();
         setActiveId(id);
-        openedListing.current = { id, at: Date.now() };
+        dispatch({ type: 'markOpened', id, provider, at });
+        // Coming back to the tab asks whether the track was bought; it never marks it by itself.
+        openedListing.current = { id, at };
       },
+      onSetSource: (id, source) => dispatch({ type: 'setAcquisitionSource', id, source }),
     }),
     [dispatch, prioritize, removeTracks],
   );
@@ -214,7 +218,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
           const url = active && selectedCandidate(active)?.recording.listingUrl;
           if (!active || !url) return;
           window.open(url, '_blank', 'noopener,noreferrer');
-          openedListing.current = { id: active.id, at: Date.now() };
+          handlers.onOpenProvider(active.id, 'itunes');
           break;
         }
         case 'p':
@@ -244,7 +248,7 @@ export default function App({ service: injectedService, storage }: AppProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeId, dispatch, setStatusAndAdvance]);
+  }, [activeId, dispatch, handlers, setStatusAndAdvance]);
 
   // --- Workspace actions ---------------------------------------------------
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACQUISITION_PROVIDERS, orderedPools, providerById } from './providers';
-import { CATALOG_EVIDENCE_TTL_MS, evidenceFor } from './evidence';
+import { CATALOG_EVIDENCE_TTL_MS, evidenceFor, openedText } from './evidence';
 import { draftToTrack, workspaceReducer } from '../../state/workspace';
 import { rankCandidates } from '../matching/rank';
 import { recording } from '../../test/fixtures';
@@ -98,5 +98,21 @@ describe('acquisition choices', () => {
     expect(ws.playlists[0]?.tracks[0]).toMatchObject({ status: 'not_started', acquisition: { source: 'djcity', opened: { djcity: 5 } } });
     ws = workspaceReducer(ws, { type: 'setAcquisitionSource', id: t.id, source: undefined });
     expect(ws.playlists[0]?.tracks[0]?.acquisition).toEqual({ source: undefined, opened: { djcity: 5 } });
+  });
+});
+
+describe('openedText', () => {
+  const MIN = 60_000;
+
+  it('rounds into minutes, hours, then days', () => {
+    expect(openedText(undefined, NOW)).toBeUndefined();
+    expect(openedText(NOW - 59 * MIN, NOW)).toBe('Opened 59 minutes ago');
+    expect(openedText(NOW - 60 * MIN, NOW)).toBe('Opened 1 hour ago');
+    expect(openedText(NOW - 47 * 60 * MIN, NOW)).toBe('Opened 47 hours ago');
+    expect(openedText(NOW - 48 * 60 * MIN, NOW)).toBe('Opened 2 days ago');
+  });
+
+  it('reads a link opened after the panel rendered as this minute', () => {
+    expect(openedText(NOW + 5 * MIN, NOW)).toBe('Opened this minute');
   });
 });

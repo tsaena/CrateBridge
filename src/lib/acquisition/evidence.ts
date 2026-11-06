@@ -49,3 +49,16 @@ export function evidenceFor(track: Track, provider: AcquisitionProvider, now = D
   }
   return { state: 'possible', label: 'Possible match, review', checkedAt: searchedAt };
 }
+
+const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+/** "Opened 2 hours ago": a reminder only, since opening a link never changes a track's status. */
+export function openedText(at: number | undefined, now: number): string | undefined {
+  if (!at) return undefined;
+  // A link opened after `now` was taken (e.g. while the panel is open) reads as "this minute".
+  const minutes = Math.round(Math.max(0, now - at) / 60_000);
+  if (minutes < 60) return `Opened ${relative.format(-minutes, 'minute')}`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `Opened ${relative.format(-hours, 'hour')}`;
+  return `Opened ${relative.format(-Math.round(hours / 24), 'day')}`;
+}
