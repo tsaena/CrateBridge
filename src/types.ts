@@ -1,3 +1,5 @@
+import type { AcquisitionProviderId, PoolId } from './lib/acquisition/providers';
+
 /** Purchase progress, controlled manually by the user. */
 export type PurchaseStatus = 'not_started' | 'found' | 'purchased' | 'skipped';
 
@@ -114,6 +116,15 @@ export interface Track {
   /** Optional custom catalog query that replaces the generated one. */
   searchOverride?: string;
   match: MatchState;
+  acquisition?: TrackAcquisition;
+}
+
+/** The user's own acquisition choices for a track. Opening a link never changes its status. */
+export interface TrackAcquisition {
+  /** Where the user plans to get this track. */
+  source?: AcquisitionProviderId;
+  /** When each provider's link was last opened from CrateBridge (epoch ms). */
+  opened?: Partial<Record<AcquisitionProviderId, number>>;
 }
 
 export interface WorkspaceSettings {
@@ -123,6 +134,8 @@ export interface WorkspaceSettings {
   /** Words appended to external store searches, e.g. "Extended". */
   searchModifiers: string[];
   autoMatch: boolean;
+  /** DJ pools the user says they subscribe to; a local preference, not an account check. */
+  poolsIUse: PoolId[];
 }
 
 /** A named list of tracks to buy, e.g. one DJ set. */

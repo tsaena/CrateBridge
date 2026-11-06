@@ -10,6 +10,7 @@ import type {
   WorkspaceSettings,
 } from '../types';
 import { rankCandidates } from '../lib/matching/rank';
+import type { AcquisitionProviderId } from '../lib/acquisition/providers';
 import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
 import { safeSpotifyTrackUrl } from '../lib/spotify/import';
 
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: WorkspaceSettings = {
   explicitPreference: 'any',
   searchModifiers: [],
   autoMatch: true,
+  poolsIUse: [],
 };
 
 export const DEFAULT_PLAYLIST_NAME = 'My playlist';
@@ -61,6 +63,8 @@ export type WorkspaceAction =
   | { type: 'matchResolved'; id: string; signature: string; candidates: RankedCandidate[]; at: number }
   | { type: 'matchFailed'; id: string; signature: string; error: string }
   | { type: 'selectCandidate'; id: string; candidateId: string }
+  | { type: 'setAcquisitionSource'; id: string; source?: AcquisitionProviderId }
+  | { type: 'markOpened'; id: string; provider: AcquisitionProviderId; at: number }
   | { type: 'updateSettings'; changes: Partial<WorkspaceSettings> }
   | { type: 'replace'; workspace: Workspace };
 
@@ -248,6 +252,20 @@ export function workspaceReducer(state: Workspace, action: WorkspaceAction): Wor
       return mapTracks(state, (t) =>
         t.id === action.id && t.match.candidates.some((c) => c.recording.id === action.candidateId)
           ? { ...t, match: { ...t.match, selectedId: action.candidateId, userSelected: true } }
+          : t,
+      );
+
+    case 'setAcquisitionSource':
+      return mapTracks(state, (t) =>
+        t.id === action.id && t.acquisition?.source !== action.source
+          ? { ...t, acquisition: { ...t.acquisition, source: action.source } }
+          : t,
+      );
+
+    case 'markOpened':
+      return mapTracks(state, (t) =>
+        t.id === action.id
+          ? { ...t, acquisition: { ...t.acquisition, opened: { ...t.acquisition?.opened, [action.provider]: action.at } } }
           : t,
       );
 

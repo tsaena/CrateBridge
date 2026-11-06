@@ -237,6 +237,18 @@ describe('App', () => {
     expect(within(row('One More Time')).getByRole('button', { name: /^Skipped/ })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('remembers which DJ pools the user uses', async () => {
+    const { user, unmount } = setup();
+    await user.click(screen.getByRole('button', { name: /Settings/ }));
+    await user.click(screen.getByRole('checkbox', { name: 'BPM Supreme' }));
+    await waitFor(() => expect(localStorage.getItem(STORAGE_KEY)).toContain('"poolsIUse":["bpm-supreme"]'));
+    unmount();
+    const { user: again } = setup();
+    await again.click(screen.getByRole('button', { name: /Settings/ }));
+    expect(screen.getByRole('checkbox', { name: 'BPM Supreme' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'DJcity' })).not.toBeChecked();
+  });
+
   it('starts fresh with a notice when stored data is corrupted', () => {
     localStorage.setItem(STORAGE_KEY, '{not json');
     setup();

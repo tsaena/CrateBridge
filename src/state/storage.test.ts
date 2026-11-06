@@ -34,7 +34,9 @@ function sampleWorkspace() {
   ws = workspaceReducer(ws, { type: 'selectCandidate', id: first!.id, candidateId: candidates[1]!.recording.id });
   ws = workspaceReducer(ws, { type: 'setStatus', ids: [first!.id], status: 'purchased' });
   ws = workspaceReducer(ws, { type: 'matchStarted', id: second!.id, signature: 's2' });
-  ws = workspaceReducer(ws, { type: 'updateSettings', changes: { country: 'GB', explicitPreference: 'clean', searchModifiers: ['Extended'] } });
+  ws = workspaceReducer(ws, { type: 'updateSettings', changes: { country: 'GB', explicitPreference: 'clean', searchModifiers: ['Extended'], poolsIUse: ['djcity'] } });
+  ws = workspaceReducer(ws, { type: 'setAcquisitionSource', id: first!.id, source: 'beatport' });
+  ws = workspaceReducer(ws, { type: 'markOpened', id: first!.id, provider: 'beatport', at: 1_700_000_000_000 });
   return ws;
 }
 
@@ -80,10 +82,11 @@ describe('workspace persistence', () => {
     const restored = loaded.workspace;
     expect(restored.playlists.map((p) => [p.name, p.tracks.length])).toEqual([['My playlist', 2], ['Friday set', 1]]);
     expect(restored.activePlaylistId).toBe(firstPlaylist);
-    expect(restored.settings).toEqual({ country: 'GB', explicitPreference: 'clean', searchModifiers: ['Extended'], autoMatch: true });
+    expect(restored.settings).toEqual({ country: 'GB', explicitPreference: 'clean', searchModifiers: ['Extended'], autoMatch: true, poolsIUse: ['djcity'] });
     expect(activePlaylist(restored).tracks[0]).toMatchObject({
       id: first.id,
       status: 'purchased',
+      acquisition: { source: 'beatport', opened: { beatport: 1_700_000_000_000 } },
       match: { phase: 'done', selectedId: candidates[1]!.recording.id, userSelected: true },
     });
     expect(activePlaylist(restored).tracks[0]?.match.candidates).toHaveLength(2);
@@ -145,14 +148,14 @@ describe('workspace persistence', () => {
     const raw = JSON.stringify({
       version: 1,
       workspace: {
-        settings: { country: 'not-a-country', explicitPreference: 'loud', searchModifiers: ['Extended', 7], autoMatch: 'yes' },
+        settings: { country: 'not-a-country', explicitPreference: 'loud', searchModifiers: ['Extended', 7], autoMatch: 'yes', poolsIUse: ['djcity', 'djcity', 'napster', 3] },
         tracks: [
           { id: 't1', artist: 'A', title: 'B', status: 'bought', source: 'teleport', match: { phase: 'done', candidates: [{ recording: { id: 'x', title: 'B', artist: 'A', listingUrl: 'javascript:alert(1)', artworkUrl: 'https://tracker.example.com/pixel.gif', price: '1.29' }, confidence: 'certain', reasons: [{ effect: 'plus', text: 'ok' }, { text: 5 }] }] } },
           { id: 't1', artist: 'Dup', title: 'Id' },
           { artist: 'No', title: 'Id' },
           { id: 't3', artist: '', title: '' },
           'garbage',
-          { id: 't4', artist: 'C', title: 'D', match: 'broken' },
+          { id: 't4', artist: 'C', title: 'D', match: 'broken', acquisition: { source: 'limewire', opened: { beatport: 5, napster: 6, bandcamp: 'soon', djcity: -1 } } },
         ],
       },
     });
@@ -160,7 +163,7 @@ describe('workspace persistence', () => {
     expect(loaded.kind).toBe('restored');
     if (loaded.kind !== 'restored') return;
     expect(loaded.droppedTracks).toBe(4);
-    expect(loaded.workspace.settings).toEqual({ country: 'US', explicitPreference: 'any', searchModifiers: ['Extended'], autoMatch: true });
+    expect(loaded.workspace.settings).toEqual({ country: 'US', explicitPreference: 'any', searchModifiers: ['Extended'], autoMatch: true, poolsIUse: ['djcity'] });
     const [t1, t4] = activePlaylist(loaded.workspace).tracks;
     expect(t1).toMatchObject({ id: 't1', status: 'not_started', source: 'manual' });
     const candidate = t1?.match.candidates[0];
@@ -172,6 +175,9 @@ describe('workspace persistence', () => {
     expect(candidate?.reasons.map((r) => r.text)).toContain('Title matches');
     expect(candidate?.reasons.map((r) => r.text)).not.toContain('ok');
     expect(t4?.match).toEqual({ phase: 'queued', candidates: [] });
+    // Unknown providers and bad timestamps are dropped.
+    expect(t4?.acquisition).toEqual({ source: undefined, opened: { beatport: 5 } });
+    expect(t1?.acquisition).toBeUndefined();
   });
 
   it('adds the iTunes Store parameter to listing links saved by earlier versions', () => {
