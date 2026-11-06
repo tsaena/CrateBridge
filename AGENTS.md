@@ -30,7 +30,7 @@ CI runs all four checks on every pull request. Run them before pushing.
 ## Product rules
 
 - CrateBridge never purchases, downloads, streams, or proxies music, and never handles payment details.
-- Don't scrape retailer websites. Use official APIs or plain search URLs only.
+- Don't scrape retailer websites or use undocumented endpoints. Use official APIs, or links the user clicks themselves: a provider's public search page (labelled as a search) or, where no such page is known, its site entry point. Never fetch those pages from the app. See "Store and DJ pool access" in the README.
 - Never label a link "Buy". A verified iTunes listing requires an individual track price from the API. Links to search results or to streaming catalogs (Apple Music web) must be labelled as such.
 - Different versions (remix, live, edit, karaoke, clean/explicit) are different recordings and must never be treated as interchangeable.
 - Respect Apple's limit of roughly 20 requests per minute. Never send imports as parallel bursts.
