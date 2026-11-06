@@ -105,6 +105,13 @@ describe('rankCandidates', () => {
     expect(ranked[1]?.confidence).toBe('review');
   });
 
+  it('keeps dated re-edits apart from the edit that was requested', () => {
+    expect(scoreCandidate({ artist: 'A', title: 'Song (Edit)' }, recording({ artist: 'A', title: 'Song (2024 Edit)' })).confidence).toBe('review');
+    expect(scoreCandidate({ artist: 'A', title: 'Song (2024 Edit)' }, recording({ artist: 'A', title: 'Song (2024 Edit)' })).confidence).toBe('high');
+    // A remaster year still doesn't make a different recording.
+    expect(scoreCandidate({ artist: 'A', title: 'Song - 2004 Remaster' }, recording({ artist: 'A', title: 'Song (2011 Remaster)' })).confidence).toBe('high');
+  });
+
   it('keeps unnamed edits and mixes with different wording apart', () => {
     for (const [want, other] of [['Song (Short Edit)', 'Song (Long Edit)'], ['Song (Vocal Mix)', 'Song (Dub)']]) {
       expect(scoreCandidate({ artist: 'A', title: want }, recording({ artist: 'A', title: other })).confidence).toBe('review');

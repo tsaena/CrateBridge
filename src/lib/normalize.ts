@@ -154,8 +154,11 @@ const EDIT_FORMAT_TAGS: ReadonlySet<VersionTag> = new Set(['radio_edit', 'extend
 
 /** True when a qualifier names a remixer or editor, e.g. "Glam As You Club Mix". */
 function namesSomeone(normalizedQualifier: string): boolean {
-  return tokens(normalizedQualifier).some((t) => !FORMAT_WORDS.has(t) && !/^\d+$/.test(t));
+  // Sizes like "12 Inch" are format words; a year ("2024 Edit") identifies a specific edit.
+  return tokens(normalizedQualifier).some((t) => !FORMAT_WORDS.has(t) && (!/^\d+$/.test(t) || YEAR.test(t)));
 }
+
+const YEAR = /^(?:19|20)\d{2}$/;
 
 // Qualifiers that describe the standard release rather than a different recording.
 const STANDARD_RELEASE = /\b(?:album|original|main|mono|stereo|single|lp)\b/;
@@ -212,8 +215,12 @@ export function analyzeTitle(title: string): TitleAnalysis {
     displayCore: core,
     tags: [...tags],
     featured,
-    // Years ("2011 Remaster") describe the release, not which recording it is.
-    qualifierTokens: tokens(qualifiers.join(' ')).filter((t) => !GENERIC_QUALIFIER_WORDS.has(t) && !/^(?:19|20)\d{2}$/.test(t)),
+    // A year on a release qualifier ("2011 Remaster") describes the release, not
+    // the recording. Elsewhere ("2024 Edit", "Live 1999") it identifies the version.
+    qualifierTokens: qualifiers.flatMap((q) => {
+      const releaseOnly = qualifierTags(q).every((t) => SOFT_VERSION_TAGS.has(t));
+      return tokens(q).filter((t) => !GENERIC_QUALIFIER_WORDS.has(t) && !(releaseOnly && YEAR.test(t)));
+    }),
   };
 }
 
