@@ -1,4 +1,5 @@
 import type {
+  TrackAcquisition,
   CatalogRecording,
   ExplicitPreference,
   MatchState,
@@ -19,6 +20,7 @@ import {
   newPlaylist,
 } from './workspace';
 import { itunesStoreUrl, safeAppleUrl } from '../lib/providers/itunes';
+import { isPoolId, isProviderId } from '../lib/acquisition/providers';
 import { rankCandidates, type MatchRequest } from '../lib/matching/rank';
 import { MAX_STORED_CANDIDATES } from '../lib/matching/matchTrack';
 import { safeSpotifyTrackUrl } from '../lib/spotify/import';
@@ -211,6 +213,7 @@ function sanitizeSettings(value: unknown): WorkspaceSettings {
       ? value.searchModifiers.filter((m): m is string => typeof m === 'string').slice(0, 10)
       : [],
     autoMatch: typeof value.autoMatch === 'boolean' ? value.autoMatch : DEFAULT_SETTINGS.autoMatch,
+    poolsIUse: Array.isArray(value.poolsIUse) ? [...new Set(value.poolsIUse.filter(isPoolId))] : [],
   };
 }
 
@@ -236,7 +239,23 @@ function sanitizeTrack(value: unknown, preference: ExplicitPreference): Track | 
     parseWarning: str(value.parseWarning),
     searchOverride: str(value.searchOverride),
     match: sanitizeMatch(value.match, request, preference),
+    acquisition: sanitizeAcquisition(value.acquisition),
   };
+}
+
+function sanitizeAcquisition(value: unknown): TrackAcquisition | undefined {
+  if (!isRecord(value)) return undefined;
+  const source = isProviderId(value.source) ? value.source : undefined;
+  const opened: TrackAcquisition['opened'] = {};
+  if (isRecord(value.opened)) {
+    for (const [provider, at] of Object.entries(value.opened)) {
+      const time = num(at);
+      if (isProviderId(provider) && time !== undefined && time > 0) opened[provider] = time;
+    }
+  }
+  const hasOpened = Object.keys(opened).length > 0;
+  if (!source && !hasOpened) return undefined;
+  return { source, opened: hasOpened ? opened : undefined };
 }
 
 function sanitizeMatch(value: unknown, request: MatchRequest, preference: ExplicitPreference): MatchState {

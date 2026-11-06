@@ -1,5 +1,6 @@
 import type { ExplicitPreference, WorkspaceSettings } from '../types';
 import { SEARCH_MODIFIERS, STOREFRONTS } from '../lib/providers/searchLinks';
+import { ACQUISITION_PROVIDERS, type PoolId } from '../lib/acquisition/providers';
 import { cx } from './cx';
 
 interface Props {
@@ -8,6 +9,11 @@ interface Props {
 }
 
 export function SettingsPanel({ settings, onChange }: Props) {
+  const togglePool = (pool: PoolId) => {
+    const on = settings.poolsIUse.includes(pool);
+    onChange({ poolsIUse: on ? settings.poolsIUse.filter((p) => p !== pool) : [...settings.poolsIUse, pool] });
+  };
+
   const toggleModifier = (modifier: string) => {
     const has = settings.searchModifiers.includes(modifier);
     onChange({
@@ -16,7 +22,7 @@ export function SettingsPanel({ settings, onChange }: Props) {
   };
 
   return (
-    <section aria-label="Search settings" className="panel grid gap-5 p-4 sm:grid-cols-3 sm:p-5">
+    <section aria-label="Search settings" className="panel grid gap-5 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
       <label className="grid content-start gap-1.5 text-sm">
         <span className="font-medium text-ink-100">iTunes storefront</span>
         <select className="field" value={settings.country} onChange={(e) => onChange({ country: e.target.value })}>
@@ -78,6 +84,24 @@ export function SettingsPanel({ settings, onChange }: Props) {
           })}
         </div>
         <span className="text-xs text-ink-400">Appended to the external store search links (Amazon, Beatport, Bandcamp, Apple Music).</span>
+      </fieldset>
+
+      <fieldset className="grid content-start gap-1.5 text-sm">
+        <legend className="mb-1.5 font-medium text-ink-100">DJ pools I use</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {ACQUISITION_PROVIDERS.filter((p) => p.kind === 'pool').map((pool) => (
+            <label key={pool.id} className="flex items-center gap-2 text-ink-200">
+              <input
+                type="checkbox"
+                className="size-4 accent-cue-500"
+                checked={settings.poolsIUse.includes(pool.id as PoolId)}
+                onChange={() => togglePool(pool.id as PoolId)}
+              />
+              {pool.name}
+            </label>
+          ))}
+        </div>
+        <span className="text-xs text-ink-400">Listed first for each track. This only sets the order: CrateBridge doesn’t sign in to pools or check your membership.</span>
       </fieldset>
     </section>
   );
