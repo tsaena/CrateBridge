@@ -62,6 +62,8 @@ export interface CatalogRecording {
   releaseDate?: string;
   genre?: string;
   isrc?: string;
+  /** On a various-artists compilation rather than the artist's own release. */
+  compilation?: boolean;
 }
 
 export interface MatchReason {

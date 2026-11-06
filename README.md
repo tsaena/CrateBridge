@@ -99,8 +99,8 @@ src/
 
 ## iTunes Search API notes and limitations
 
-- CrateBridge calls `https://itunes.apple.com/search` with `media=music&entity=song` directly from the browser. If the browser blocks the `fetch` (for example, if CORS headers are missing), it falls back to the API's documented JSONP `callback` parameter for the rest of the session. No proxy or backend is involved.
-- Apple asks clients to stay at roughly **20 requests per minute**. CrateBridge paces itself to 15 per minute, leaving headroom in case other devices on the same network are also querying Apple, so matching a 50-track playlist takes about 3½ minutes. Search links and statuses work while matching runs.
+- CrateBridge calls `https://itunes.apple.com/search` with `media=music&entity=song` directly from the browser. Apple's responses, including its 403 rate-limit responses, carry CORS headers, so a normal `fetch` works and sees real status codes. If a `fetch` fails anyway, that request falls back to the API's documented JSONP `callback` parameter. After repeated failures, the rest of the session uses JSONP. No proxy or backend is involved.
+- Apple asks clients to stay at roughly **20 requests per minute**. CrateBridge paces itself to 15 per minute, leaving headroom in case other devices on the same network are also querying Apple, so matching a 50-track playlist takes about 3½ minutes. Search links and statuses work while matching runs. In testing, Apple throttled quickly after bursts of requests from one network, even below that rate.
 - The API does not return ISRCs, so ISRC matching only applies when a future provider supplies them. Imported ISRCs (for example from an Exportify CSV) are kept.
 - **There is no reliable cross-platform iTunes Store web search URL.** Apple Music web search (`music.apple.com/…/search`) is a streaming catalog and does not sell tracks, so CrateBridge searches the catalog through the API and shows the results inside the app.
 - **Store listing links** use the API's `trackViewUrl`, which now points at Apple Music, with Apple's `app=itunes` link parameter added so the iTunes Store page for that exact recording opens instead. This is confirmed on macOS, where it opens the Music app (turn on *iTunes Store* in Music → Settings → General). iPhone and Windows behavior hasn't been tested yet. Without Apple's apps, the link falls back to Apple Music on the web, which doesn't sell tracks.
@@ -115,6 +115,8 @@ src/
 - Data lives only in this browser's `localStorage`. There is **no cloud backup or cross-device sync**, and clearing site data removes it. Use *Export CSV* to keep a copy.
 - Matching is heuristic. Unusual titles, classical works, and artists whose catalog credits differ a lot from the playlist may need a manual pick or a refined search.
 - The JSONP fallback injects a script from `itunes.apple.com`. It is only used when a direct `fetch` fails.
+- Apple's search doesn't always return an artist's original recording. For example, in the US storefront "Lady Gaga Poker Face" returns only remixes, and "Rosalía DESPECHÁ" only covers. CrateBridge rates these as *Review suggested* or *No reliable match* instead of guessing. Use the other stores' search links for them.
+- When several listings are the same recording, the artist's own album is preferred over compilations. Apple's release dates aren't used for ordering, because compilations often carry the original song's date, or an older one.
 
 ## Roadmap
 

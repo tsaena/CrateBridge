@@ -287,6 +287,7 @@ function sanitizeRecording(value: unknown): CatalogRecording | undefined {
     // Also upgrades links saved before they carried the iTunes Store parameter.
     listingUrl: itunesStoreUrl(httpsOnly(str(r.listingUrl))),
     releaseDate: str(r.releaseDate),
+    compilation: r.compilation === true || undefined,
     genre: str(r.genre),
     isrc: str(r.isrc),
   };

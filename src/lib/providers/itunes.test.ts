@@ -47,6 +47,20 @@ describe('parseItunesResponse', () => {
     expect(unknown?.explicitness).toBe('unknown');
   });
 
+  it('flags various-artists compilations from collectionArtistName', () => {
+    const [compilation, ownAlbum, artistCompilation] = parseItunesResponse({
+      results: [
+        itunesResult({ collectionName: 'Pop Music: The Modern Era 1976-1999', collectionArtistName: 'Various Artists' }),
+        itunesResult({ collectionName: 'Thriller' }),
+        itunesResult({ collectionName: 'Number Ones', collectionArtistName: 'Michael Jackson' }),
+      ],
+    });
+    expect(compilation?.compilation).toBe(true);
+    expect(ownAlbum?.compilation).toBeUndefined();
+    // Only various-artists albums are flagged here; an artist's own hits album is detected by name in ranking.
+    expect(artistCompilation?.compilation).toBeUndefined();
+  });
+
   it('returns an empty list for empty results', () => {
     expect(parseItunesResponse({ resultCount: 0, results: [] })).toEqual([]);
   });
@@ -123,13 +137,26 @@ describe('createItunesProvider', () => {
     await expect(provider.search(query)).rejects.toMatchObject({ kind: 'network', retryable: true });
   });
 
-  it('falls back to JSONP when fetch is blocked, then keeps using it', async () => {
+  it('falls back to JSONP when fetch is blocked, and switches to it once fetch keeps failing', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     const jsonp = vi.fn().mockResolvedValue({ results: [itunesResult()] });
     const provider = createItunesProvider({ fetchImpl, jsonp });
-    await expect(provider.search(query)).resolves.toHaveLength(1);
-    await expect(provider.search(query)).resolves.toHaveLength(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 3; i += 1) await expect(provider.search(query)).resolves.toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(jsonp).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps using fetch after a one-off failure', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(jsonResponse({ results: [itunesResult()] }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(jsonResponse({ results: [itunesResult()] }));
+    const jsonp = vi.fn().mockResolvedValue({ results: [itunesResult()] });
+    const provider = createItunesProvider({ fetchImpl, jsonp });
+    for (let i = 0; i < 4; i += 1) await expect(provider.search(query)).resolves.toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
     expect(jsonp).toHaveBeenCalledTimes(2);
   });
 
