@@ -199,7 +199,8 @@ describe('App', () => {
     await pasteAndImport(user, 'The Weeknd - Blinding Lights');
     await within(row('Blinding Lights')).findByText('Lookup failed');
     await user.click(within(row('Blinding Lights')).getByRole('button', { name: /Where to get it/ }));
-    expect(within(row('Blinding Lights')).getByText('Unable to check: Couldn’t reach Apple’s catalog.')).toBeInTheDocument();
+    expect(within(row('Blinding Lights')).getByText('Unable to check')).toBeInTheDocument();
+    expect(within(row('Blinding Lights')).getByText('Couldn’t reach Apple’s catalog.')).toBeInTheDocument();
     expect(within(row('Blinding Lights')).getByRole('link', { name: /Search Beatport/ })).toHaveAttribute(
       'href',
       'https://www.beatport.com/search?q=The%20Weeknd%20Blinding%20Lights',

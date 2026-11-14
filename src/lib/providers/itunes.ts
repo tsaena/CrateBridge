@@ -40,6 +40,19 @@ export interface ItunesResponse {
 
 export type JsonpLoader = (url: string, timeoutMs: number) => Promise<unknown>;
 
+/** Why a JSONP request produced no data. A script request never exposes its HTTP status. */
+export type JsonpFailure = 'script-error' | 'timeout' | 'no-callback' | 'unavailable';
+
+export class JsonpError extends Error {
+  readonly code: JsonpFailure;
+
+  constructor(code: JsonpFailure) {
+    super(`JSONP request failed (${code})`);
+    this.name = 'JsonpError';
+    this.code = code;
+  }
+}
+
 export interface ItunesProviderOptions {
   fetchImpl?: typeof fetch;
   /** Fallback transport used when `fetch` is blocked (e.g. by CORS). Pass `null` to disable. */
@@ -47,11 +60,16 @@ export interface ItunesProviderOptions {
   timeoutMs?: number;
 }
 
+/**
+ * `media=music` is deliberately not sent. For iPhone and iPad browsers Apple
+ * answers a `media=music` search with a redirect to the Music app
+ * (`musics://…`) instead of results, which fails every lookup there (#4).
+ * `entity=song` alone returns the same songs to every browser.
+ */
 export function buildSearchUrl({ term, country, limit = 25 }: CatalogQuery): string {
   const params = new URLSearchParams({
     term,
     country: country.toUpperCase(),
-    media: 'music',
     entity: 'song',
     limit: String(Math.min(Math.max(limit, 1), 200)),
   });
@@ -65,22 +83,36 @@ export function createItunesProvider(options: ItunesProviderOptions = {}): Catal
   const timeoutMs = options.timeoutMs ?? 15_000;
   const jsonp = options.jsonp === undefined ? loadJsonp : options.jsonp;
   // Apple's responses, including 403 rate limits, carry CORS headers, so fetch
-  // normally works and shows real status codes. Only switch to JSONP for the
-  // rest of the session after fetch has failed repeatedly while JSONP worked,
-  // so one network blip doesn't hide status codes from then on.
+  // normally works and shows real status codes. Only switch to JSONP after
+  // fetch has failed repeatedly while JSONP worked, so one network blip
+  // doesn't hide status codes, and switch back as soon as JSONP fails.
   let jsonpRescues = 0;
   let preferJsonp = false;
 
   async function viaFetch(url: string, signal?: AbortSignal): Promise<unknown> {
     const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new DOMException('Timed out', 'TimeoutError'));
+    }, timeoutMs);
     const onAbort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      const response = await fetchImpl(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+      // The search never needs a redirect. Not following one lets a redirect be
+      // reported as what it is; a followed redirect to an app scheme would look
+      // like a network failure.
+      const response = await fetchImpl(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+      });
+      if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+        throw new CatalogError('redirected', 'Apple redirected this lookup instead of answering it.', undefined, 'fetch-redirect');
+      }
       if (response.status === 403 || response.status === 429) {
-        throw new CatalogError('rate_limited', 'Apple is limiting requests right now.', response.status);
+        throw new CatalogError('rate_limited', `Apple is limiting requests right now (HTTP ${response.status}).`, response.status);
       }
       if (response.status >= 500) {
         throw new CatalogError('server', `Apple’s catalog returned an error (${response.status}).`, response.status);
@@ -92,8 +124,12 @@ export function createItunesProvider(options: ItunesProviderOptions = {}): Catal
     } catch (error) {
       if (error instanceof CatalogError) throw error;
       if (signal?.aborted) throw new CatalogError('aborted', 'Search cancelled.');
+      if (timedOut) {
+        const seconds = Math.round(timeoutMs / 1000);
+        throw new CatalogError('timeout', `Apple’s catalog didn’t answer within ${seconds} seconds.`, undefined, 'fetch-timeout');
+      }
       if (error instanceof SyntaxError) throw new CatalogError('bad_response', 'Apple returned unreadable data.');
-      throw new CatalogError('network', 'Couldn’t reach Apple’s catalog.');
+      throw new CatalogError('network', 'Couldn’t reach Apple’s catalog.', undefined, 'fetch-network');
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
@@ -107,15 +143,23 @@ export function createItunesProvider(options: ItunesProviderOptions = {}): Catal
       const url = buildSearchUrl(query);
       let payload: unknown;
       if (preferJsonp && jsonp) {
-        payload = await viaJsonp(jsonp, url, timeoutMs);
+        try {
+          payload = await viaJsonp(jsonp, url, timeoutMs);
+        } catch (error) {
+          // A script request hides its status, so go back to fetch: the retry then shows what Apple actually answers.
+          preferJsonp = false;
+          jsonpRescues = 0;
+          throw error;
+        }
       } else {
         try {
           payload = await viaFetch(url, signal);
           jsonpRescues = 0;
         } catch (error) {
-          // A TypeError from fetch is indistinguishable from a CORS block; JSONP is Apple's documented alternative.
+          // Only a fetch that failed without any response can be a CORS block, which a script request gets around.
+          // A status, a redirect or a timeout would be the same for a script.
           if (!(error instanceof CatalogError) || error.kind !== 'network' || !jsonp || signal?.aborted) throw error;
-          payload = await viaJsonp(jsonp, url, timeoutMs);
+          payload = await viaJsonp(jsonp, url, timeoutMs, 'fetch-network');
           jsonpRescues += 1;
           if (jsonpRescues >= JSONP_SWITCH_AFTER) preferJsonp = true;
         }
@@ -126,13 +170,29 @@ export function createItunesProvider(options: ItunesProviderOptions = {}): Catal
   };
 }
 
-async function viaJsonp(jsonp: JsonpLoader, url: string, timeoutMs: number): Promise<unknown> {
+const JSONP_FAILURE_TEXT: Record<JsonpFailure, string> = {
+  'script-error': 'failed to load',
+  timeout: 'timed out',
+  'no-callback': 'loaded without returning data',
+  unavailable: 'couldn’t run',
+};
+
+async function viaJsonp(jsonp: JsonpLoader, url: string, timeoutMs: number, fetchDetail?: string): Promise<unknown> {
   try {
     return await jsonp(url, timeoutMs);
-  } catch {
-    // A failed script load hides the HTTP status. A 403 rate limit looks exactly
-    // like this, so the caller backs off as if limited.
-    throw new CatalogError('possibly_rate_limited', 'Apple’s catalog didn’t respond. It may be limiting requests.');
+  } catch (error) {
+    // Nothing here says why. In particular it is not evidence of rate limiting:
+    // Apple's 403 responses carry CORS headers, so fetch reports those itself.
+    const code: JsonpFailure = error instanceof JsonpError ? error.code : 'script-error';
+    const script = `the ${fetchDetail ? 'fallback ' : ''}script request ${JSONP_FAILURE_TEXT[code]}`;
+    throw new CatalogError(
+      'no_response',
+      fetchDetail
+        ? `Couldn’t reach Apple’s catalog: the request got no response, and ${script}.`
+        : `Couldn’t reach Apple’s catalog: ${script}.`,
+      undefined,
+      [fetchDetail, `jsonp-${code}`].filter(Boolean).join('+'),
+    );
   }
 }
 
@@ -219,7 +279,7 @@ let jsonpCounter = 0;
 export const loadJsonp: JsonpLoader = (url, timeoutMs) =>
   new Promise((resolve, reject) => {
     if (typeof document === 'undefined') {
-      reject(new Error('JSONP needs a browser document'));
+      reject(new JsonpError('unavailable'));
       return;
     }
     jsonpCounter += 1;
@@ -231,17 +291,19 @@ export const loadJsonp: JsonpLoader = (url, timeoutMs) =>
       delete registry[callbackName];
       script.remove();
     };
-    const timer = setTimeout(() => {
+    const fail = (code: JsonpFailure) => {
       cleanup();
-      reject(new Error('JSONP request timed out'));
-    }, timeoutMs);
+      reject(new JsonpError(code));
+    };
+    const timer = setTimeout(() => fail('timeout'), timeoutMs);
     registry[callbackName] = (data: unknown) => {
       cleanup();
       resolve(data);
     };
-    script.onerror = () => {
-      cleanup();
-      reject(new Error('JSONP request failed'));
+    script.onerror = () => fail('script-error');
+    // A script runs before its load event, so by now the callback has been called if it was going to be.
+    script.onload = () => {
+      if (callbackName in registry) fail('no-callback');
     };
     script.src = `${url}&callback=${callbackName}`;
     script.async = true;

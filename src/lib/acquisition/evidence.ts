@@ -33,9 +33,10 @@ export function evidenceFor(track: Track, provider: AcquisitionProvider, now = D
   if (provider.access === 'search-link') return { state: 'search-only', label: 'Search only, not checked' };
   if (provider.access === 'entry-point') return { state: 'membership', label: 'Membership required, not checked' };
 
-  const { phase, searchedAt, error } = track.match;
+  const { phase, searchedAt } = track.match;
   if (phase === 'queued' || phase === 'searching' || phase === 'idle') return { state: 'checking', label: 'Checking…' };
-  if (phase === 'error') return { state: 'unable', label: error ? `Unable to check: ${error}` : 'Unable to check' };
+  // The reason is shown in full next to the label; it is too long for the label itself on a phone.
+  if (phase === 'error') return { state: 'unable', label: 'Unable to check' };
   if (searchedAt !== undefined && now - searchedAt > CATALOG_EVIDENCE_TTL_MS) {
     return { state: 'stale', label: 'Checked over 30 days ago, refresh needed', checkedAt: searchedAt };
   }

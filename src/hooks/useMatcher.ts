@@ -16,7 +16,7 @@ export interface MatcherStatus {
   /** Tracks waiting for a catalog lookup, including the one in progress. */
   outstanding: number;
   running: boolean;
-  /** Epoch ms until which Apple has asked us to back off. */
+  /** Epoch ms until which lookups are held back after a failure. */
   pausedUntil: number;
   pauseReason?: PauseReason;
 }

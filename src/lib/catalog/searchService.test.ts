@@ -61,7 +61,7 @@ describe('CatalogSearchService', () => {
     expect(calls).toBe(3);
   });
 
-  it.each(['rate_limited', 'possibly_rate_limited'] as const)('pauses the whole queue when %s', async (kind) => {
+  it.each(['rate_limited', 'no_response'] as const)('pauses the whole queue when %s', async (kind) => {
     let calls = 0;
     const p = provider(async ({ term }) => {
       calls += 1;
@@ -101,6 +101,16 @@ describe('CatalogSearchService', () => {
     const service = new CatalogSearchService(p, { minIntervalMs: 0 });
     await expect(service.search(q('x'))).rejects.toMatchObject({ kind: 'bad_response' });
     expect(p.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an exception in the app as internal, not as a network failure, and does not retry it', async () => {
+    const p = provider(async () => {
+      throw new TypeError('Cannot read properties of null');
+    });
+    const service = new CatalogSearchService(p, { minIntervalMs: 0 });
+    await expect(service.search(q('x'))).rejects.toMatchObject({ kind: 'internal', detail: 'TypeError', retryable: false });
+    expect(p.search).toHaveBeenCalledTimes(1);
+    expect(service.limiter.snapshot().pausedUntil).toBe(0);
   });
 
   it('drops queued requests that are cancelled before they start', async () => {

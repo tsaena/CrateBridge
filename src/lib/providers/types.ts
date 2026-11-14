@@ -18,20 +18,44 @@ export interface CatalogProvider {
   search(query: CatalogQuery, signal?: AbortSignal): Promise<CatalogRecording[]>;
 }
 
-export type CatalogErrorKind = 'rate_limited' | 'possibly_rate_limited' | 'network' | 'server' | 'bad_response' | 'aborted';
+/**
+ * How a catalog lookup failed. Each kind is something the app actually observed:
+ * - `rate_limited`: HTTP 403 or 429.
+ * - `server` / `bad_response`: another HTTP error, or a body that couldn't be read.
+ * - `redirected`: the catalog answered with a redirect instead of results.
+ * - `timeout`: no answer within the time limit.
+ * - `network`: the request failed without a response (offline, blocked, or CORS).
+ * - `no_response`: neither the request nor its script fallback got an answer; the cause is unknown.
+ * - `internal`: an exception in CrateBridge itself.
+ */
+export type CatalogErrorKind =
+  | 'rate_limited'
+  | 'no_response'
+  | 'network'
+  | 'timeout'
+  | 'redirected'
+  | 'server'
+  | 'bad_response'
+  | 'internal'
+  | 'aborted';
+
+const FINAL_KINDS: readonly CatalogErrorKind[] = ['bad_response', 'redirected', 'internal', 'aborted'];
 
 export class CatalogError extends Error {
   readonly kind: CatalogErrorKind;
   readonly status?: number;
+  /** Short code for what the transport saw, e.g. `jsonp-script-error`. Never includes the query. */
+  readonly detail?: string;
 
-  constructor(kind: CatalogErrorKind, message: string, status?: number) {
+  constructor(kind: CatalogErrorKind, message: string, status?: number, detail?: string) {
     super(message);
     this.name = 'CatalogError';
     this.kind = kind;
     this.status = status;
+    this.detail = detail;
   }
 
   get retryable(): boolean {
-    return this.kind !== 'bad_response' && this.kind !== 'aborted';
+    return !FINAL_KINDS.includes(this.kind);
   }
 }

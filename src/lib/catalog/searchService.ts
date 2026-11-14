@@ -6,7 +6,7 @@ export interface SearchServiceOptions {
   /** Spacing between requests. Apple documents roughly 20 calls per minute. */
   minIntervalMs?: number;
   maxRetries?: number;
-  /** Base wait after a rate-limit response; doubles on each repeat. */
+  /** Base wait after a rate-limit response or a lookup that got no answer at all; doubles on each repeat. */
   rateLimitBackoffMs?: number;
   /** Base wait after a network or server error; doubles on each retry. */
   retryBackoffMs?: number;
@@ -78,13 +78,18 @@ export class CatalogSearchService {
     try {
       return await this.limiter.schedule(() => this.provider.search(query, options.signal), options);
     } catch (error) {
+      // Anything else is a bug in CrateBridge, not a catalog problem: report it as one and don't retry.
       const catalogError =
-        error instanceof CatalogError ? error : new CatalogError('network', 'Couldn’t reach the catalog.');
+        error instanceof CatalogError
+          ? error
+          : new CatalogError('internal', 'CrateBridge hit an unexpected error during this lookup.', undefined, errorName(error));
       if (!catalogError.retryable || attempt >= this.maxRetries || options.signal?.aborted) throw catalogError;
-      const limited = catalogError.kind === 'rate_limited' || catalogError.kind === 'possibly_rate_limited';
-      const wait = (limited ? this.rateLimitBackoffMs : this.retryBackoffMs) * 2 ** attempt;
-      // Rate limiting affects every request, so pause the whole queue rather than just this one.
-      this.limiter.pauseUntil(this.now() + wait, limited ? catalogError.kind as PauseReason : 'retry');
+      // Both waits pause the whole queue, since these failures affect every request. The long wait also
+      // covers `no_response`: that lookup already spent two requests (fetch, then its script fallback)
+      // with no answer to either, so the app stays well inside Apple's limit until something answers.
+      const long = catalogError.kind === 'rate_limited' || catalogError.kind === 'no_response';
+      const wait = (long ? this.rateLimitBackoffMs : this.retryBackoffMs) * 2 ** attempt;
+      this.limiter.pauseUntil(this.now() + wait, long ? (catalogError.kind as PauseReason) : 'retry');
       return this.attempt(query, { ...options, priority: true }, attempt + 1);
     }
   }
@@ -96,4 +101,8 @@ export class CatalogSearchService {
       if (oldest !== undefined) this.cache.delete(oldest);
     }
   }
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
 }

@@ -81,8 +81,8 @@ export function SummaryBar({ summary, matcher, autoMatch, onToggleAutoMatch, now
               <span className="text-review-300">
                 {matcher.pauseReason === 'rate_limited'
                   ? 'Apple asked us to slow down'
-                  : matcher.pauseReason === 'possibly_rate_limited'
-                    ? 'Apple didn’t answer the last lookup (it may be limiting requests)'
+                  : matcher.pauseReason === 'no_response'
+                    ? 'Couldn’t reach Apple’s catalog on the last lookup'
                     : 'A lookup failed'}
                 {' '}— resuming lookups in {backoffSeconds}s.
               </span>

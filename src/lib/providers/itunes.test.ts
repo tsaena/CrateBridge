@@ -1,18 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
-import { buildSearchUrl, createItunesProvider, parseItunesResponse, safeAppleUrl } from './itunes';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JsonpError, buildSearchUrl, createItunesProvider, loadJsonp, parseItunesResponse, safeAppleUrl } from './itunes';
 import { CatalogError } from './types';
 import { itunesResult, jsonResponse } from '../../test/fixtures';
 
 const query = { term: 'The Weeknd Blinding Lights', country: 'us' };
 
 describe('buildSearchUrl', () => {
-  it('requests songs from the music media type in the chosen storefront', () => {
+  // Apple redirects `media=music` searches from iPhone and iPad browsers to the Music app (#4).
+  it('requests songs in the chosen storefront without media=music', () => {
     const url = new URL(buildSearchUrl({ ...query, limit: 500 }));
     expect(url.origin + url.pathname).toBe('https://itunes.apple.com/search');
     expect(Object.fromEntries(url.searchParams)).toEqual({
       term: 'The Weeknd Blinding Lights',
       country: 'US',
-      media: 'music',
       entity: 'song',
       limit: '200',
     });
@@ -160,12 +160,60 @@ describe('createItunesProvider', () => {
     expect(jsonp).toHaveBeenCalledTimes(2);
   });
 
-  it('treats a failed JSONP request as possible rate limiting, since its status is hidden', async () => {
-    const provider = createItunesProvider({
-      fetchImpl: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
-      jsonp: vi.fn().mockRejectedValue(new Error('script error')),
+  it('reports a redirect as a redirect, without retrying or falling back', async () => {
+    // What a browser returns for a redirect when fetch is told not to follow it.
+    const redirect = { type: 'opaqueredirect', status: 0, ok: false } as Response;
+    const fetchImpl = vi.fn().mockResolvedValue(redirect);
+    const jsonp = vi.fn();
+    const provider = createItunesProvider({ fetchImpl, jsonp });
+    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'redirected', retryable: false });
+    expect(fetchImpl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ redirect: 'manual' }));
+    expect(jsonp).not.toHaveBeenCalled();
+  });
+
+  it('reports a timeout as a timeout, without falling back', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn((_url: string, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
     });
-    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'possibly_rate_limited', retryable: true });
+    const jsonp = vi.fn();
+    const provider = createItunesProvider({ fetchImpl: fetchImpl as unknown as typeof fetch, jsonp, timeoutMs: 15_000 });
+    const assertion = expect(provider.search(query)).rejects.toMatchObject({ kind: 'timeout', retryable: true });
+    await vi.advanceTimersByTimeAsync(15_000);
+    await assertion;
+    expect(jsonp).not.toHaveBeenCalled();
+  });
+
+  it('does not call it rate limiting when neither fetch nor JSONP gets an answer', async () => {
+    const provider = createItunesProvider({
+      fetchImpl: vi.fn().mockRejectedValue(new TypeError('Load failed')),
+      jsonp: vi.fn().mockRejectedValue(new JsonpError('script-error')),
+    });
+    const error: unknown = await provider.search(query).catch((e: unknown) => e);
+    expect(error).toMatchObject({ kind: 'no_response', retryable: true, detail: 'fetch-network+jsonp-script-error' });
+    expect((error as CatalogError).message).not.toMatch(/limit/i);
+  });
+
+  it('goes back to fetch when JSONP fails, so the retry shows the real status', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(new Response('', { status: 403 }));
+    const jsonp = vi
+      .fn()
+      .mockResolvedValueOnce({ results: [itunesResult()] })
+      .mockResolvedValueOnce({ results: [itunesResult()] })
+      .mockRejectedValue(new JsonpError('script-error'));
+    const provider = createItunesProvider({ fetchImpl, jsonp });
+    await provider.search(query);
+    await provider.search(query);
+    // Now on JSONP only: its failure can't be told apart from a rate limit.
+    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'no_response', detail: 'jsonp-script-error' });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await expect(provider.search(query)).rejects.toMatchObject({ kind: 'rate_limited', status: 403 });
   });
 
   it('reports cancellation without falling back', async () => {
@@ -181,5 +229,36 @@ describe('createItunesProvider', () => {
     controller.abort();
     await expect(pending).rejects.toMatchObject({ kind: 'aborted' });
     expect(jsonp).not.toHaveBeenCalled();
+  });
+});
+
+describe('loadJsonp', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const lastScript = () => document.head.querySelector<HTMLScriptElement>('script[src*="callback="]')!;
+
+  it('returns the data passed to its callback', async () => {
+    const pending = loadJsonp('https://itunes.apple.com/search?term=x', 1000);
+    const script = lastScript();
+    const callback = new URL(script.src).searchParams.get('callback')!;
+    (window as unknown as Record<string, (data: unknown) => void>)[callback]!({ results: [] });
+    await expect(pending).resolves.toEqual({ results: [] });
+    expect(script.isConnected).toBe(false);
+  });
+
+  it('tells a script that failed to load from one that returned no data and one that timed out', async () => {
+    vi.useFakeTimers();
+    const failed = loadJsonp('https://itunes.apple.com/search?term=x', 1000);
+    lastScript().dispatchEvent(new Event('error'));
+    await expect(failed).rejects.toMatchObject({ code: 'script-error' });
+
+    const silent = loadJsonp('https://itunes.apple.com/search?term=x', 1000);
+    lastScript().dispatchEvent(new Event('load'));
+    await expect(silent).rejects.toMatchObject({ code: 'no-callback' });
+
+    const slow = loadJsonp('https://itunes.apple.com/search?term=x', 1000);
+    const assertion = expect(slow).rejects.toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(1000);
+    await assertion;
   });
 });

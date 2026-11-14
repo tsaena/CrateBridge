@@ -75,7 +75,7 @@ describe('evidenceFor', () => {
     expect(evidenceFor(track(), itunes, NOW).state).toBe('checking');
     expect(evidenceFor(track({ match: { phase: 'error', candidates: [], error: 'Offline' } }), itunes, NOW)).toMatchObject({
       state: 'unable',
-      label: 'Unable to check: Offline',
+      label: 'Unable to check',
     });
     expect(evidenceFor(matched([]), itunes, NOW)).toMatchObject({ state: 'not-found', label: 'Not found in this lookup' });
   });
