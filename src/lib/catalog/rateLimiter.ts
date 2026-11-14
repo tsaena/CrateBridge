@@ -6,13 +6,13 @@ export interface RateLimiterOptions {
   now?: () => number;
 }
 
-/** Why the queue is paused: a confirmed rate limit, a likely one, or an ordinary retry. */
-export type PauseReason = 'rate_limited' | 'possibly_rate_limited' | 'retry';
+/** Why the queue is paused: a rate limit Apple reported, a lookup that got no answer at all, or an ordinary retry. */
+export type PauseReason = 'rate_limited' | 'no_response' | 'retry';
 
 export interface RateLimiterSnapshot {
   waiting: number;
   active: boolean;
-  /** Epoch ms until which requests are held back after a rate-limit response. */
+  /** Epoch ms until which requests are held back after a failed lookup. */
   pausedUntil: number;
   pauseReason?: PauseReason;
 }
