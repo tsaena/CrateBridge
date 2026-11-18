@@ -24,8 +24,8 @@ CI runs all four checks on every pull request. Run them before pushing.
 - All catalog requests go through `CatalogSearchService` so that pacing, retries, and caching apply.
 - Changes to stored data must still load workspaces saved by earlier versions. Validate them in `src/state/storage.ts` and bump `SCHEMA_VERSION` only when a migration is needed.
 - Tests: add a test for each behavior change or bug fix, at the lowest layer that covers it. Don't add tests that repeat coverage that already exists at another layer.
-- Don't add a software license; that decision is pending with the maintainer.
-- Keep documentation to the README unless asked.
+- MIT is the preferred license, conditional on a source, dependency, contributor-rights and assets audit. Do not add LICENSE until that audit and owner approval are complete.
+- Maintain dedicated planning documents in docs/; README remains the public usage and architecture entrypoint.
 
 ## Product rules
 
@@ -49,4 +49,8 @@ Prioritize issues that would make a user buy the wrong recording, mislead them a
 - Check that responses for a track that was edited, re-queued, or deleted are still discarded (the signature checks in `src/state/workspace.ts`).
 - Check that unknown or missing catalog metadata degrades to *Review suggested* or *No reliable match*, not to a confident guess.
 - Flag missing regression tests for bug fixes. Also flag new tests that only repeat existing coverage.
-- Don't flag the absence of a license, backend, or cloud sync. These are deliberate decisions for now.
+- The absence of a license is an active audit item, not authorization to add one. Backend and cloud sync remain out of scope.
+
+## Current direction (November 18, 2026)
+
+Read [docs/PRODUCT_DIRECTION.md](docs/PRODUCT_DIRECTION.md), [docs/DESIGN_BRIEF.md](docs/DESIGN_BRIEF.md), and [docs/AGENT_HANDOFF.md](docs/AGENT_HANDOFF.md) before planning new features. Target working mobile/event DJs. Prioritize a calm, polished, **mobile-first** purchase workflow with desktop parity. Validate real iOS and Android behavior; responsive CSS alone is not enough. The published acquisition flow is the v1 foundation. The experimental Serato backup/ownership branch is research for a future Workspace Prep product, not part of the public web v1 release. Future architecture remains undecided; see [docs/WORKSPACE_PREP_RESEARCH.md](docs/WORKSPACE_PREP_RESEARCH.md). No product rename or visual redesign implementation until owner review of design directions.
